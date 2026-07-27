@@ -56,6 +56,130 @@ export interface SeltraConfig {
   surplusSplit: { makerBps: 7000; keeperBps: 3000 };
 }
 
+interface PairRegistryValue {
+  base: Address;
+  baseSymbol: string;
+  baseDecimals: number;
+  quote: Address;
+  quoteSymbol: string;
+  quoteDecimals: number;
+}
+
+interface ParsedPairRegistry {
+  tokens: TokenConfig[];
+  pairs: PairConfig[];
+}
+
+const TOKEN_AMOUNT_PRECISION: Record<string, number> = {
+  WAVAX: 4,
+  "WETH.e": 5,
+  "BTC.b": 6,
+  USDC: 2,
+  USDt: 2,
+};
+
+function parsePairRegistry(raw: string | undefined): ParsedPairRegistry | undefined {
+  if (!raw?.trim()) return undefined;
+
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("NEXT_PUBLIC_PAIRS must be valid JSON");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("NEXT_PUBLIC_PAIRS must be a JSON object");
+  }
+
+  const tokensByAddress = new Map<string, TokenConfig>();
+  const tokenAddressBySymbol = new Map<string, string>();
+  const pairIds = new Set<string>();
+  const pairs: PairConfig[] = [];
+
+  for (const [registryName, entry] of Object.entries(value)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`NEXT_PUBLIC_PAIRS.${registryName} must be an object`);
+    }
+    const item = entry as Record<string, unknown>;
+    const pair: PairRegistryValue = {
+      base: pairAddress(item.base, `${registryName}.base`),
+      baseSymbol: pairSymbol(item.baseSymbol, `${registryName}.baseSymbol`),
+      baseDecimals: tokenDecimals(item.baseDecimals, `${registryName}.baseDecimals`),
+      quote: pairAddress(item.quote, `${registryName}.quote`),
+      quoteSymbol: pairSymbol(item.quoteSymbol, `${registryName}.quoteSymbol`),
+      quoteDecimals: tokenDecimals(item.quoteDecimals, `${registryName}.quoteDecimals`),
+    };
+    if (pair.base.toLowerCase() === pair.quote.toLowerCase()) {
+      throw new Error(`NEXT_PUBLIC_PAIRS.${registryName} must use two different tokens`);
+    }
+
+    registerToken(tokensByAddress, tokenAddressBySymbol, pair.base, pair.baseSymbol, pair.baseDecimals);
+    registerToken(tokensByAddress, tokenAddressBySymbol, pair.quote, pair.quoteSymbol, pair.quoteDecimals);
+
+    const id = `${pair.baseSymbol}-${pair.quoteSymbol}`;
+    if (pairIds.has(id.toLowerCase())) throw new Error(`duplicate frontend pair ${id}`);
+    pairIds.add(id.toLowerCase());
+    pairs.push({
+      id,
+      base: pair.baseSymbol,
+      quote: pair.quoteSymbol,
+      pricePrecision: pair.quoteSymbol === "USDt" ? 5 : 4,
+      amountPrecision: TOKEN_AMOUNT_PRECISION[pair.baseSymbol] ?? Math.min(pair.baseDecimals, 6),
+    });
+  }
+
+  if (pairs.length === 0) throw new Error("NEXT_PUBLIC_PAIRS must contain at least one pair");
+  return { tokens: [...tokensByAddress.values()], pairs };
+}
+
+function pairAddress(value: unknown, label: string): Address {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new Error(`NEXT_PUBLIC_PAIRS.${label} must be an EVM address`);
+  }
+  return value as Address;
+}
+
+function pairSymbol(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim() || value.length > 16 || /[-/]/.test(value)) {
+    throw new Error(`NEXT_PUBLIC_PAIRS.${label} is invalid`);
+  }
+  return value;
+}
+
+function tokenDecimals(value: unknown, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 255) {
+    throw new Error(`NEXT_PUBLIC_PAIRS.${label} must be an integer from 0 to 255`);
+  }
+  return parsed;
+}
+
+function registerToken(
+  byAddress: Map<string, TokenConfig>,
+  addressBySymbol: Map<string, string>,
+  address: Address,
+  symbol: string,
+  decimals: number,
+): void {
+  const normalizedAddress = address.toLowerCase();
+  const normalizedSymbol = symbol.toLowerCase();
+  const existing = byAddress.get(normalizedAddress);
+  if (existing && (existing.symbol !== symbol || existing.decimals !== decimals)) {
+    throw new Error(`token ${address} has conflicting frontend metadata`);
+  }
+  const symbolAddress = addressBySymbol.get(normalizedSymbol);
+  if (symbolAddress && symbolAddress !== normalizedAddress) {
+    throw new Error(`token symbol ${symbol} maps to more than one address`);
+  }
+  byAddress.set(normalizedAddress, {
+    symbol,
+    address,
+    decimals,
+    logo: symbol.slice(0, 1).toUpperCase(),
+  });
+  addressBySymbol.set(normalizedSymbol, normalizedAddress);
+}
+
 // Defaults are the deployed Fuji demo stack (contracts repo addresses.fuji.json):
 // open-mint sWAVAX/sUSDC, the only pair the deployed settlement allowlists.
 // Settlement/router intentionally default to zero (placement stays blocked)
@@ -74,6 +198,15 @@ const quoteToken: TokenConfig = {
   logo: env(process.env.NEXT_PUBLIC_QUOTE_SYMBOL, "sUSDC").slice(0, 1).toUpperCase(),
 };
 
+const pairRegistry = parsePairRegistry(process.env.NEXT_PUBLIC_PAIRS);
+const fallbackPair: PairConfig = {
+  id: `${baseToken.symbol}-${quoteToken.symbol}`,
+  base: baseToken.symbol,
+  quote: quoteToken.symbol,
+  pricePrecision: 2,
+  amountPrecision: 4,
+};
+
 export const seltraConfig: SeltraConfig = {
   chainId: Number(env(process.env.NEXT_PUBLIC_CHAIN_ID, "43113")) === 43114 ? 43114 : 43113,
   rpcUrl: env(process.env.NEXT_PUBLIC_RPC_URL, "https://api.avax-test.network/ext/bc/C/rpc"),
@@ -87,16 +220,8 @@ export const seltraConfig: SeltraConfig = {
     router: addressEnv(process.env.NEXT_PUBLIC_ROUTER),
     permit2: addressEnv(process.env.NEXT_PUBLIC_PERMIT2, "0x000000000022D473030F116dDEE9F6B43aC78BA3"),
   },
-  tokens: [baseToken, quoteToken],
-  pairs: [
-    {
-      id: `${baseToken.symbol}-${quoteToken.symbol}`,
-      base: baseToken.symbol,
-      quote: quoteToken.symbol,
-      pricePrecision: 2,
-      amountPrecision: 4,
-    },
-  ],
+  tokens: pairRegistry?.tokens ?? [baseToken, quoteToken],
+  pairs: pairRegistry?.pairs ?? [fallbackPair],
   walletConnectProjectId: env(process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, ""),
   maxExpirySeconds: boundedIntegerEnv(
     process.env.NEXT_PUBLIC_MAX_EXPIRY_SECONDS,

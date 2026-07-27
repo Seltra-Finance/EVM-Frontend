@@ -1166,7 +1166,8 @@ button:disabled {
 }
 
 .legend-candle,
-.legend-lfj {
+.legend-lfj,
+.legend-venue {
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -1174,11 +1175,16 @@ button:disabled {
   background: var(--buy);
 }
 
-.legend-lfj {
+.legend-lfj,
+.legend-venue {
   width: 10px;
   height: 1px;
   border-radius: 0;
   background: var(--accent);
+}
+
+.chart-legend .venue-best {
+  color: var(--text-1);
 }
 
 .chart-controls {

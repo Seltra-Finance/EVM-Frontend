@@ -25,6 +25,16 @@ const INTERVALS: { label: string; seconds: number }[] = [
   { label: "1D", seconds: 86_400 },
 ];
 
+const VENUE_COLORS: Record<string, string> = {
+  lfj: "#00bfa5",
+  blackhole: "#8b5cf6",
+  pharaoh: "#f59e0b",
+};
+
+function venueColor(name: string, index: number): string {
+  return VENUE_COLORS[name.toLowerCase()] ?? ["#38bdf8", "#fb7185", "#a3e635"][index % 3];
+}
+
 export function PriceChart({ pairId }: { pairId: string }) {
   const pair = pairById(pairId);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -32,8 +42,8 @@ export function PriceChart({ pairId }: { pairId: string }) {
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const marketLineRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const quoteLineRef = useRef<IPriceLine | null>(null);
-  const quotePriceRef = useRef<number | null>(null);
+  const venuePriceLinesRef = useRef<IPriceLine[]>([]);
+  const quoteRangeRef = useRef<{ min: number; max: number } | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [intervalSeconds, setIntervalSeconds] = useState(3600);
   const { data: candles, isLoading } = useCandles(pair.id, intervalSeconds);
@@ -68,13 +78,13 @@ export function PriceChart({ pairId }: { pairId: string }) {
       // executable-quote line is always on screen.
       autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const info = original();
-        const quotePrice = quotePriceRef.current;
-        if (!info?.priceRange || quotePrice === null) return info;
+        const quoteRange = quoteRangeRef.current;
+        if (!info?.priceRange || quoteRange === null) return info;
         return {
           ...info,
           priceRange: {
-            minValue: Math.min(info.priceRange.minValue, quotePrice),
-            maxValue: Math.max(info.priceRange.maxValue, quotePrice),
+            minValue: Math.min(info.priceRange.minValue, quoteRange.min),
+            maxValue: Math.max(info.priceRange.maxValue, quoteRange.max),
           },
         };
       },
@@ -117,7 +127,7 @@ export function PriceChart({ pairId }: { pairId: string }) {
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       marketLineRef.current = null;
-      quoteLineRef.current = null;
+      venuePriceLinesRef.current = [];
       chart.remove();
     };
   }, []);
@@ -173,25 +183,38 @@ export function PriceChart({ pairId }: { pairId: string }) {
     line.setData(points);
   }, [quoteHistory]);
 
-  // Executable-price line from the router quote (venue-labeled), absent when no venue quotes.
+  // Current executable prices from every available venue. The historical line
+  // remains the best executable quote sampled by the API.
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
-    quotePriceRef.current = quote?.price ?? null;
-    if (quoteLineRef.current) {
-      series.removePriceLine(quoteLineRef.current);
-      quoteLineRef.current = null;
+    for (const line of venuePriceLinesRef.current) {
+      series.removePriceLine(line);
     }
-    if (quote) {
-      const style = getComputedStyle(document.documentElement);
-      quoteLineRef.current = series.createPriceLine({
-        price: quote.price,
-        color: style.getPropertyValue("--accent").trim(),
+    venuePriceLinesRef.current = [];
+
+    const venues = quote
+      ? quote.venues.length > 0
+        ? quote.venues
+        : [{ name: quote.venue, price: quote.price }]
+      : [];
+    const validVenues = venues.filter((venue) => Number.isFinite(venue.price) && venue.price > 0);
+    quoteRangeRef.current = validVenues.length > 0
+      ? {
+          min: Math.min(...validVenues.map((venue) => venue.price)),
+          max: Math.max(...validVenues.map((venue) => venue.price)),
+        }
+      : null;
+
+    for (const [index, venue] of validVenues.entries()) {
+      venuePriceLinesRef.current.push(series.createPriceLine({
+        price: venue.price,
+        color: venueColor(venue.name, index),
         lineWidth: 1,
-        lineStyle: 2,
+        lineStyle: venue.name === quote?.venue ? 0 : 2,
         axisLabelVisible: true,
-        title: quote.venue,
-      });
+        title: venue.name,
+      }));
     }
   }, [quote]);
 
@@ -227,7 +250,13 @@ export function PriceChart({ pairId }: { pairId: string }) {
             {rangeChange !== undefined ? (
               <span className={`number chart-change ${rangeChange < 0 ? "down" : ""}`}>{rangeChange >= 0 ? "+" : ""}{rangeChange.toFixed(2)}%</span>
             ) : null}
-            {quote ? <span><i className="legend-lfj" /> {quote.venue} {quote.price.toFixed(pair.pricePrecision)}</span> : null}
+            {quote?.venues.map((venue, index) => (
+              <span className={venue.name === quote.venue ? "venue-best" : undefined} key={venue.name}>
+                <i className="legend-venue" style={{ backgroundColor: venueColor(venue.name, index) }} />
+                {venue.name} {venue.price.toFixed(pair.pricePrecision)}
+                {venue.name === quote.venue ? " · Best" : ""}
+              </span>
+            ))}
           </div>
         </div>
         <div className="chart-controls" aria-label="Chart interval">
