@@ -6,6 +6,18 @@ import { formatToken } from "@/lib/format";
 import type { OrderEntryMachine } from "@/hooks/use-order-entry-machine";
 import { GridOrderForm } from "@/components/grid-order-form";
 import { InfoTip } from "@/components/info-tip";
+import { seltraConfig } from "@/config/seltra.config";
+
+const EXPIRY_OPTIONS = [
+  { seconds: 3_600, label: "1h" },
+  { seconds: 86_400, label: "1d" },
+  { seconds: 604_800, label: "7d" },
+  { seconds: 2_592_000, label: "30d" },
+].filter((option) => option.seconds <= seltraConfig.maxExpirySeconds);
+
+function expiryLabel(seconds: number): string {
+  return EXPIRY_OPTIONS.find((option) => option.seconds === seconds)?.label ?? `${seconds}s`;
+}
 
 export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine; midPrice?: number }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -99,7 +111,18 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
           </div>
           <div className="advanced-settings">
             <button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}><span>Advanced settings</span><ChevronDown size={15} /></button>
-            {advancedOpen ? <label className="field advanced-field"><span className="field-label">Expiry <small>Maximum 30 days</small></span><select value={m.expirySeconds} onChange={(event) => m.setExpirySeconds(Number(event.target.value))}><option value={3600}>1h</option><option value={86400}>1d</option><option value={604800}>7d</option><option value={2592000}>30d</option></select></label> : null}
+            {advancedOpen ? (
+              <label className="field advanced-field">
+                <span className="field-label">
+                  Expiry <small>Maximum {expiryLabel(seltraConfig.maxExpirySeconds)}</small>
+                </span>
+                <select value={m.expirySeconds} onChange={(event) => m.setExpirySeconds(Number(event.target.value))}>
+                  {EXPIRY_OPTIONS.map((option) => (
+                    <option key={option.seconds} value={option.seconds}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
         </>
       ) : (
@@ -142,7 +165,7 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
         </div>
         <div>
           <span>Expiry</span>
-          <strong className="number">{m.kind === "market" ? "10m" : m.expirySeconds === 3600 ? "1h" : m.expirySeconds === 86400 ? "1d" : m.expirySeconds === 604800 ? "7d" : "30d"}</strong>
+          <strong className="number">{m.kind === "market" ? "10m" : expiryLabel(m.expirySeconds)}</strong>
         </div>
       </div>
       {m.needsApproval ? <p className="approval-note"><ShieldCheck size={15} /> One-time Permit2 approval. Seltra never receives a standing approval.</p> : null}

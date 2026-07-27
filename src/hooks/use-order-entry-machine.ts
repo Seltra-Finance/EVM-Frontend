@@ -153,7 +153,9 @@ export function useOrderEntryMachine(params: {
   const [side, setSide] = useState<OrderSide>(params.initial?.side ?? "sell");
   const [amount, setAmount] = useState(params.initial?.amount ?? "");
   const [price, setPrice] = useState(params.initial?.price ?? "");
-  const [expirySeconds, setExpirySeconds] = useState(params.initial?.expirySeconds ?? 86_400);
+  const [expirySeconds, setExpirySeconds] = useState(
+    Math.min(params.initial?.expirySeconds ?? 86_400, seltraConfig.maxExpirySeconds),
+  );
   const [state, dispatch] = useReducer(flowReducer, { tag: "idle" });
 
   const makerAsset = side === "sell" ? base : quote;
@@ -251,7 +253,7 @@ export function useOrderEntryMachine(params: {
 
   function updateExpiry(next: number) {
     clearRejection();
-    setExpirySeconds(next);
+    setExpirySeconds(Math.min(next, seltraConfig.maxExpirySeconds));
   }
 
   function setAmountPercent(percent: bigint) {
