@@ -14,6 +14,16 @@ function addressEnv(value: string | undefined, fallback: Address = zeroAddress):
   return env(value, fallback) as Address;
 }
 
+function boundedIntegerEnv(
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number(env(value, String(fallback)));
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : fallback;
+}
+
 export interface TokenConfig {
   symbol: string;
   address: Address;
@@ -88,7 +98,12 @@ export const seltraConfig: SeltraConfig = {
     },
   ],
   walletConnectProjectId: env(process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, ""),
-  maxExpirySeconds: 2_592_000,
+  maxExpirySeconds: boundedIntegerEnv(
+    process.env.NEXT_PUBLIC_MAX_EXPIRY_SECONDS,
+    2_592_000,
+    3_600,
+    2_592_000,
+  ),
   surplusSplit: { makerBps: 7000, keeperBps: 3000 },
 };
 

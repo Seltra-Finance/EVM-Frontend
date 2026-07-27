@@ -59,11 +59,15 @@ export type GridFlowState =
   | { tag: "partial-failure"; manifest: GridManifest }
   | { tag: "rejected"; reason: string };
 
-export const GRID_EXPIRY_OPTIONS = [
+const ALL_GRID_EXPIRY_OPTIONS = [
   { label: "1 day", seconds: 86_400 },
   { label: "7 days", seconds: 604_800 },
   { label: "30 days", seconds: 2_592_000 },
 ] as const;
+
+export const GRID_EXPIRY_OPTIONS = ALL_GRID_EXPIRY_OPTIONS.filter(
+  (option) => option.seconds <= seltraConfig.maxExpirySeconds,
+);
 
 export interface GridOrderMachine {
   pair: PairConfig;
@@ -132,7 +136,9 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
   const [levels, setLevelsRaw] = useState("6");
   const [baseBudget, setBaseBudgetRaw] = useState("");
   const [quoteBudget, setQuoteBudgetRaw] = useState("");
-  const [expirySeconds, setExpirySecondsRaw] = useState<number>(604_800);
+  const [expirySeconds, setExpirySecondsRaw] = useState<number>(
+    Math.min(604_800, seltraConfig.maxExpirySeconds),
+  );
   const [state, setState] = useState<GridFlowState>({ tag: "editing" });
   const [plan, setPlan] = useState<GridPlan | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -224,6 +230,10 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     }
     if (fillsPaused) {
       setFormError("Fills are paused by the guardian. You can still cancel orders, but new grids are blocked.");
+      return;
+    }
+    if (expirySeconds > seltraConfig.maxExpirySeconds) {
+      setFormError("Grid expiry exceeds the configured maximum.");
       return;
     }
     const config = currentConfig();
