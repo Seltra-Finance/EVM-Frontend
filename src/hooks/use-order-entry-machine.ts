@@ -23,9 +23,10 @@ import {
 } from "@/config/seltra.config";
 import { seltraApi } from "@/lib/api";
 import {
-  buildAmounts,
+  buildMakerAmounts,
   buildOrder,
   maxUint256,
+  normalizeDecimalInput,
   typedDataForSigning,
   type SignedOrder,
 } from "@seltra/sdk";
@@ -203,7 +204,13 @@ export function useOrderEntryMachine(params: {
       : price;
   const orderExpirySeconds = kind === "market" ? MARKET_EXPIRY_SECONDS : expirySeconds;
 
-  const { makingAmount, takingAmount } = buildAmounts(side, amount, effectivePrice, base.decimals, quote.decimals);
+  const { makingAmount, takingAmount } = buildMakerAmounts(
+    side,
+    amount,
+    effectivePrice,
+    base.decimals,
+    quote.decimals,
+  );
 
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: makerAsset.address,
@@ -296,6 +303,9 @@ export function useOrderEntryMachine(params: {
 
   function updateSide(next: OrderSide) {
     clearRejection();
+    // Amount is denominated in the maker asset (base on Sell, quote on Buy),
+    // so carrying it across sides would silently change its token unit.
+    if (next !== side) setAmount("");
     setSide(next);
   }
 
@@ -311,12 +321,12 @@ export function useOrderEntryMachine(params: {
 
   function updateAmount(next: string) {
     clearRejection();
-    setAmount(next);
+    setAmount(normalizeDecimalInput(next));
   }
 
   function updatePrice(next: string) {
     clearRejection();
-    setPrice(next);
+    setPrice(normalizeDecimalInput(next));
   }
 
   function updateExpiry(next: number) {
@@ -329,6 +339,8 @@ export function useOrderEntryMachine(params: {
   function setAmountPercent(percent: bigint) {
     // Gas safety: MAX-style presets are built from effectiveAvailable, which
     // already has the gas reserve subtracted out of the native AVAX side.
+    // Amount is maker-denominated on both sides, so the displayed preset and
+    // the eventual Permit2 spend are exactly the same token quantity.
     if (!effectiveAvailable) return;
     updateAmount(formatUnits((effectiveAvailable * percent) / 100n, makerAsset.decimals));
   }
