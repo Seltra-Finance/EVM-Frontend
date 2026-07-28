@@ -22,7 +22,6 @@ import {
   type TokenConfig,
 } from "@/config/seltra.config";
 import { seltraApi } from "@/lib/api";
-import { useMarkets } from "@/lib/market-data";
 import {
   buildMakerAmounts,
   buildOrder,
@@ -136,8 +135,6 @@ export interface OrderEntryMachine {
   balance: bigint | undefined;
   balanceKnown: boolean;
   insufficientBalance: boolean;
-  belowMinimumNotional: boolean;
-  minimumQuoteAmount: string | null;
   needsApproval: boolean;
 
   /** True only when makerAsset is WAVAX — the leg native AVAX can fund. */
@@ -178,7 +175,6 @@ export function useOrderEntryMachine(params: {
   const base = tokenBySymbol(pair.base);
   const quote = tokenBySymbol(pair.quote);
   const { address, isConnected, chainId } = useAccount();
-  const { data: markets } = useMarkets();
   const [kind, setKind] = useState<OrderKind>("limit");
   const [slippageBps, setSlippageBps] = useState(50);
   const [side, setSide] = useState<OrderSide>(params.initial?.side ?? "sell");
@@ -215,11 +211,6 @@ export function useOrderEntryMachine(params: {
     base.decimals,
     quote.decimals,
   );
-  const marketPolicy = markets?.find((market) => market.pair.toLowerCase() === pair.id.toLowerCase());
-  const minimumQuoteNotional = BigInt(marketPolicy?.minOrderNotional ?? "0");
-  const quoteNotional = side === "buy" ? makingAmount : takingAmount;
-  const belowMinimumNotional =
-    quoteNotional > 0n && minimumQuoteNotional > 0n && quoteNotional < minimumQuoteNotional;
 
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: makerAsset.address,
@@ -426,13 +417,6 @@ export function useOrderEntryMachine(params: {
       dispatch({ type: "REJECTED", reason: "Amount and limit price must be above zero" });
       return;
     }
-    if (belowMinimumNotional) {
-      dispatch({
-        type: "REJECTED",
-        reason: `Order must be at least ${marketPolicy?.minOrderNotionalFormatted ?? "the configured minimum"} ${quote.symbol}`,
-      });
-      return;
-    }
     if (orderExpirySeconds <= 0 || orderExpirySeconds > seltraConfig.maxExpirySeconds) {
       dispatch({ type: "REJECTED", reason: `Expiry must be above zero and at most ${Math.round(seltraConfig.maxExpirySeconds / 86_400)} days` });
       return;
@@ -578,8 +562,6 @@ export function useOrderEntryMachine(params: {
     balance,
     balanceKnown,
     insufficientBalance,
-    belowMinimumNotional,
-    minimumQuoteAmount: marketPolicy?.minOrderNotionalFormatted ?? null,
     needsApproval,
     nativeAvaxApplicable,
     useNativeAvax,
