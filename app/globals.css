@@ -4924,3 +4924,14 @@ button:disabled {
   min-height: 32px;
   font-size: 12px;
 }
+
+/* --- Mobile touch targets: dropdowns and tab controls at >=44px --------- */
+
+@media (max-width: 768px) {
+  .dropdown-trigger,
+  .orders-tabs button,
+  .order-kind-tabs button,
+  .stats-scope button {
+    min-height: 44px;
+  }
+}
