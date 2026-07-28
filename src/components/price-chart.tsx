@@ -23,6 +23,8 @@ const INTERVALS: { label: string; seconds: number }[] = [
   { label: "1h", seconds: 3600 },
   { label: "4h", seconds: 14_400 },
   { label: "1D", seconds: 86_400 },
+  { label: "1W", seconds: 604_800 },
+  { label: "1M", seconds: 2_592_000 },
 ];
 
 const VENUE_COLORS: Record<string, string> = {
@@ -142,6 +144,28 @@ export function PriceChart({ pairId }: { pairId: string }) {
     };
   }, []);
 
+  // Tick labels reflect the selected timeframe, not just how much history
+  // happens to exist yet: hour-and-below buckets show a clock time, day and
+  // above show a date. Without this, lightweight-charts' own auto-formatting
+  // shows clock-time ticks any time the visible span is short — which, for a
+  // young pair with only a couple of hours of real history, it always is,
+  // even with 1D/1W/1M selected.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const showDate = intervalSeconds >= 86_400;
+    chart.applyOptions({
+      timeScale: {
+        tickMarkFormatter: (time: UTCTimestamp) => {
+          const date = new Date(time * 1000);
+          return showDate
+            ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+            : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        },
+      },
+    });
+  }, [intervalSeconds, isReady]);
+
   // Data feed: real fill-backed candles only; an empty book stays empty.
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -166,15 +190,6 @@ export function PriceChart({ pairId }: { pairId: string }) {
         color: candle.close >= candle.open ? buyMuted : sellMuted,
       })),
     );
-    const timeScale = chartRef.current?.timeScale();
-    if (candles.length >= 8) {
-      timeScale?.fitContent();
-    } else if (candles.length > 0) {
-      // fitContent with a handful of candles stretches each bar across the pane;
-      // pin a normal bar width and keep the bars near the right edge instead.
-      timeScale?.applyOptions({ barSpacing: 12 });
-      timeScale?.setVisibleLogicalRange({ from: candles.length - 30, to: candles.length + 4 });
-    }
   }, [candles]);
 
   // Keep the legacy best-price history as a rolling-deployment fallback. Once
@@ -229,6 +244,16 @@ export function PriceChart({ pairId }: { pairId: string }) {
       series.setData(points);
     }
   }, [venueQuoteHistory]);
+
+  // Re-fit the shared time scale whenever either data source changes shape —
+  // candles and the venue-history lines are independent series with very
+  // different point counts, so a manual logical-range guess keyed to only
+  // one of them (the previous approach) could go out of range for the
+  // other and render a corrupted, squished chart. fitContent() always fits
+  // whatever is actually on screen, for either or both series.
+  useEffect(() => {
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, venueQuoteHistory, intervalSeconds]);
 
   // Current executable prices from every available venue.
   useEffect(() => {
