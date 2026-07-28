@@ -815,12 +815,17 @@ button:disabled {
 
 .input-row button,
 .input-row span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   min-height: 42px;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   background: var(--bg-overlay);
   color: var(--text-2);
   padding: 0 10px;
+  white-space: nowrap;
 }
 
 .input-row button {
@@ -877,6 +882,26 @@ button:disabled {
 .quick-price button:hover {
   border-color: var(--accent-soft);
   color: var(--accent);
+}
+
+.quick-price button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.quick-price button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.expiry-presets {
+  flex-wrap: wrap;
+}
+
+.expiry-presets button {
+  min-height: 30px;
+  padding: 0 11px;
 }
 
 .summary-box {
@@ -4602,12 +4627,17 @@ button:disabled {
 .market-switcher-symbols,
 .market-switcher-option-symbols {
   display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.market-switcher-symbols .token-icon,
+.market-switcher-option-symbols .token-icon {
+  vertical-align: middle;
 }
 
 .market-switcher-sep {
@@ -4797,6 +4827,9 @@ button:disabled {
 }
 
 .balances-row-symbol {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 600;
   color: var(--text-1);
 }
@@ -4934,4 +4967,115 @@ button:disabled {
   .stats-scope button {
     min-height: 44px;
   }
+}
+
+/* --- Token icons ---------------------------------------------------------- */
+
+.token-icon {
+  flex-shrink: 0;
+  border-radius: 999px;
+  vertical-align: -3px;
+}
+
+.inline-token-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.inline-token-value .token-icon {
+  vertical-align: middle;
+}
+
+.token-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-2);
+  font-weight: 700;
+}
+
+/* --- Native AVAX pill switch --------------------------------------------- */
+
+.avax-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.avax-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.avax-switch-track {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 19px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-overlay);
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.avax-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--text-3);
+  transition: transform var(--motion-fast), background var(--motion-fast);
+}
+
+.avax-switch input:checked + .avax-switch-track {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avax-switch input:checked + .avax-switch-track .avax-switch-thumb {
+  transform: translateX(15px);
+  background: var(--accent);
+}
+
+.avax-switch input:focus-visible + .avax-switch-track {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.avax-switch-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.avax-switch input:checked ~ .avax-switch-text {
+  color: var(--text-1);
+}
+
+.avax-switch.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.native-avax-toggle .native-avax-note {
+  margin: 4px 0 0;
+  padding-left: 0;
 }

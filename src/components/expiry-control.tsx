@@ -4,11 +4,13 @@ import { useState } from "react";
 import { seltraConfig } from "@/config/seltra.config";
 import { validateCustomExpiryDays } from "@/lib/order-validation";
 
-// One expiry control shared by Limit and Grid orders. Presets plus a Custom
-// (days) input, capped at seltraConfig.maxExpirySeconds — the mainnet launch
-// policy is 7 days (604800s), derived here rather than duplicated. Invalid or
-// over-limit custom values are never silently clamped: they show an inline
-// error and the caller is told the value isn't valid so it can block signing.
+// One expiry control shared by Limit and Grid orders: preset buttons plus a
+// Custom (days) input, capped at seltraConfig.maxExpirySeconds — the mainnet
+// launch policy is 7 days (604800s), derived here rather than duplicated.
+// Invalid or over-limit custom values are never silently clamped: they show
+// an inline error and the caller is told the value isn't valid so it can
+// block signing. Presets are plain styled buttons, not a native <select>, so
+// the control matches the rest of the terminal instead of the OS menu.
 
 const ALL_PRESETS = [
   { seconds: 3_600, label: "1h" },
@@ -18,7 +20,6 @@ const ALL_PRESETS = [
 ] as const;
 
 const SECONDS_PER_DAY = 86_400;
-const CUSTOM = "custom";
 
 export function presetsWithinMax(
   maxSeconds: number,
@@ -46,20 +47,20 @@ export function ExpiryControl({
 }) {
   const presets = presetsWithinMax(maxSeconds, basePresets);
   const matchesPreset = presets.some((preset) => preset.seconds === seconds);
-  const [mode, setMode] = useState<"preset" | typeof CUSTOM>(matchesPreset ? "preset" : CUSTOM);
+  const [customMode, setCustomMode] = useState(!matchesPreset);
   const [customDays, setCustomDays] = useState(() => (matchesPreset ? "" : String(seconds / SECONDS_PER_DAY)));
   const [customError, setCustomError] = useState<string | null>(null);
 
-  function selectPreset(value: string) {
-    if (value === CUSTOM) {
-      setMode(CUSTOM);
-      onValidChange?.(customError === null && customDays.trim() !== "");
-      return;
-    }
-    setMode("preset");
+  function pickPreset(presetSeconds: number) {
+    setCustomMode(false);
     setCustomError(null);
     onValidChange?.(true);
-    onChange(Number(value));
+    onChange(presetSeconds);
+  }
+
+  function openCustom() {
+    setCustomMode(true);
+    onValidChange?.(customError === null && customDays.trim() !== "");
   }
 
   function updateCustomDays(raw: string) {
@@ -76,23 +77,26 @@ export function ExpiryControl({
   }
 
   const expiryDate = new Date(Date.now() + seconds * 1000);
-  const showCustomInput = mode === CUSTOM;
 
   return (
     <div className="expiry-control">
-      <select
-        id={`${idPrefix}-select`}
-        className="dropdown-trigger expiry-select"
-        aria-label="Expiry"
-        value={mode === CUSTOM ? CUSTOM : String(seconds)}
-        onChange={(event) => selectPreset(event.target.value)}
-      >
+      <div className="quick-price expiry-presets" role="group" aria-label="Expiry">
         {presets.map((preset) => (
-          <option key={preset.seconds} value={preset.seconds}>{preset.label}</option>
+          <button
+            key={preset.seconds}
+            type="button"
+            className={!customMode && seconds === preset.seconds ? "active" : ""}
+            aria-pressed={!customMode && seconds === preset.seconds}
+            onClick={() => pickPreset(preset.seconds)}
+          >
+            {preset.label}
+          </button>
         ))}
-        <option value={CUSTOM}>Custom</option>
-      </select>
-      {showCustomInput ? (
+        <button type="button" className={customMode ? "active" : ""} aria-pressed={customMode} onClick={openCustom}>
+          Custom
+        </button>
+      </div>
+      {customMode ? (
         <div className="expiry-custom">
           <div className="input-row">
             <input

@@ -95,19 +95,19 @@ export function useTrades(pairId: string) {
   });
 }
 
-export function useQuoteHistory(pairId: string) {
+export function useQuoteHistory(pairId: string, fromMs?: number) {
   return useQuery<QuotePoint[]>({
-    queryKey: ["seltra", "quote-history", pairId],
-    queryFn: () => seltraApi.getQuoteHistory(pairId),
+    queryKey: ["seltra", "quote-history", pairId, fromMs ?? "default"],
+    queryFn: () => seltraApi.getQuoteHistory(pairId, fromMs),
     refetchInterval: 30_000,
     retry: 1,
   });
 }
 
-export function useVenueQuoteHistory(pairId: string) {
+export function useVenueQuoteHistory(pairId: string, fromMs?: number) {
   return useQuery<VenueQuotePoint[]>({
-    queryKey: ["seltra", "venue-quote-history", pairId],
-    queryFn: () => seltraApi.getVenueQuoteHistory(pairId),
+    queryKey: ["seltra", "venue-quote-history", pairId, fromMs ?? "default"],
+    queryFn: () => seltraApi.getVenueQuoteHistory(pairId, fromMs),
     refetchInterval: 30_000,
     retry: 1,
   });

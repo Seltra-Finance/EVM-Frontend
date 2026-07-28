@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { defaultPairId, resolveDisplayPairId, seltraConfig } from "@/config/seltra.config";
 import { NumberText } from "@/components/number-text";
+import { displaySymbol, TokenIcon } from "@/components/token-icon";
 import { useStats } from "@/lib/market-data";
 
 export default function StatsPage() {
@@ -59,7 +60,10 @@ function StatsPageContent() {
                 className={selectedPairId === candidate.id ? "active" : ""}
                 onClick={() => setPair(candidate.id)}
               >
-                {candidate.base}/{candidate.quote}
+                <span className="inline-token-value">
+                  <TokenIcon symbol={candidate.base} size={14} />
+                  {displaySymbol(candidate.base)}/{displaySymbol(candidate.quote)}
+                </span>
               </button>
             ))}
           </div>
@@ -81,11 +85,11 @@ function StatsPageContent() {
             <div>
               <span className="label">Total volume{pair ? ` · ${pair.id}` : ""}</span>
               {stats.quoteSymbol && stats.totalVolumeQuote !== null ? (
-                <NumberText value={Number(stats.totalVolumeQuote)} suffix={` ${stats.quoteSymbol}`} />
+                <NumberText value={Number(stats.totalVolumeQuote)} suffix={` ${displaySymbol(stats.quoteSymbol)}`} />
               ) : stats.volumeByQuote.length > 0 ? (
                 <div className="volume-by-quote">
                   {stats.volumeByQuote.map((entry) => (
-                    <NumberText key={entry.quoteSymbol} value={Number(entry.amount)} suffix={` ${entry.quoteSymbol}`} />
+                    <NumberText key={entry.quoteSymbol} value={Number(entry.amount)} suffix={` ${displaySymbol(entry.quoteSymbol)}`} />
                   ))}
                 </div>
               ) : (
