@@ -155,6 +155,9 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
       </div>
       {m.needsApproval ? <p className="approval-note"><ShieldCheck size={15} /> One-time Permit2 approval. Seltra never receives a standing approval.</p> : null}
       {m.insufficientBalance ? <p className="form-error"><AlertTriangle size={15} /> Insufficient {displaySymbol(makerAsset.symbol)} balance.</p> : null}
+      {m.belowMinimumNotional ? (
+        <p className="form-error"><AlertTriangle size={15} /> Minimum order is {m.minimumQuoteAmount} {displaySymbol(quote.symbol)}.</p>
+      ) : null}
       {state.tag === "rejected" ? (
         <p className="form-error">
           <AlertTriangle size={14} /> {state.reason}

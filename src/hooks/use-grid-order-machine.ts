@@ -23,13 +23,16 @@ import {
 } from "@/config/seltra.config";
 import { useAvaxWrap } from "@/hooks/use-avax-wrap";
 import { seltraApi } from "@/lib/api";
+import { useMarkets } from "@/lib/market-data";
 import {
   GridPlanError,
   buildGridManifest,
   buildGridOrders,
   collectGridSignatures,
+  findUndersizedGridLevel,
   maxUint256,
   normalizeGridReason,
+  normalizeDecimalInput,
   planGrid,
   requiredGridApprovals,
   submitGridOrders,
@@ -144,6 +147,7 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
   const base = tokenBySymbol(pair.base);
   const quote = tokenBySymbol(pair.quote);
   const { address, isConnected, chainId } = useAccount();
+  const { data: markets } = useMarkets();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
@@ -262,6 +266,10 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     };
   }
 
+  function editDecimalField(setter: (value: string) => void) {
+    return (value: string) => editField(setter)(normalizeDecimalInput(value));
+  }
+
   function currentConfig(): GridConfig | null {
     if (!referencePrice) return null;
     return {
@@ -313,6 +321,19 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     } catch (cause) {
       setFormError(cause instanceof GridPlanError ? cause.userMessage : normalizeGridReason(cause));
       return;
+    }
+    const marketPolicy = markets?.find((market) => market.pair.toLowerCase() === pair.id.toLowerCase());
+    const minimumQuoteNotional = BigInt(marketPolicy?.minOrderNotional ?? "0");
+    if (minimumQuoteNotional > 0n) {
+      const undersized = findUndersizedGridLevel(nextPlan, minimumQuoteNotional);
+      if (undersized) {
+        setFormError(
+          `Each grid order must be at least ${marketPolicy?.minOrderNotionalFormatted} ${quote.symbol}. ` +
+            `The ${undersized.level.side} at ${undersized.level.price} is ${formatUnits(undersized.quoteNotional, quote.decimals)} ${quote.symbol}; ` +
+            "increase its budget or reduce the number of levels.",
+        );
+        return;
+      }
     }
     if (baseBalance === undefined || quoteBalance === undefined) {
       setFormError("Wallet balances unavailable. Check your RPC connection and try again.");
@@ -564,15 +585,15 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     base,
     quote,
     lowerPrice,
-    setLowerPrice: editField(setLowerPriceRaw),
+    setLowerPrice: editDecimalField(setLowerPriceRaw),
     upperPrice,
-    setUpperPrice: editField(setUpperPriceRaw),
+    setUpperPrice: editDecimalField(setUpperPriceRaw),
     levels,
     setLevels: editField(setLevelsRaw),
     baseBudget,
-    setBaseBudget: editField(setBaseBudgetRaw),
+    setBaseBudget: editDecimalField(setBaseBudgetRaw),
     quoteBudget,
-    setQuoteBudget: editField(setQuoteBudgetRaw),
+    setQuoteBudget: editDecimalField(setQuoteBudgetRaw),
     expirySeconds,
     setExpirySeconds: editField(setExpirySecondsRaw),
     expiryValid,

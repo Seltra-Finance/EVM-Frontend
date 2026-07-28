@@ -8,6 +8,7 @@ import {
   buildGridOrders,
   collectGridSignatures,
   formatScaled,
+  findUndersizedGridLevel,
   parseDecimal,
   planGrid,
   requiredGridApprovals,
@@ -88,6 +89,16 @@ test("aggregate maker amounts equal the configured budgets exactly", () => {
   assert.equal(plan.requiredQuote, sumQuote);
 });
 
+test("a 7 USDC grid clears a 1 USDC per-child minimum and thinner children are identified", () => {
+  const sevenUsdc = planGrid(config({ levels: 6, quoteBudget: "7" }), pair);
+  assert.equal(findUndersizedGridLevel(sevenUsdc, 1_000_000n), null);
+
+  const thin = findUndersizedGridLevel(sevenUsdc, 3_000_000n);
+  assert.ok(thin);
+  assert.equal(thin.level.side, "buy");
+  assert.ok(thin.quoteNotional < 3_000_000n);
+});
+
 test("division remainder goes to the earliest levels of each side", () => {
   // 5 quote units across 2 buys -> 3 then 2; 5 wei base across 2 sells would
   // produce a zero taking amount, so use amounts that stay above zero.
@@ -137,7 +148,7 @@ test("range and side validation", () => {
   assert.throws(() => planGrid(config({ baseBudget: "0" }), pair), /Base budget/);
   assert.throws(() => planGrid(config({ quoteBudget: "0" }), pair), /Quote budget/);
   assert.throws(() => planGrid(config({ quoteBudget: "1.2345678" }), pair), /decimal places/);
-  assert.throws(() => planGrid(config({ lowerPrice: "30,00" }), pair), /decimal number/);
+  assert.equal(planGrid(config({ lowerPrice: "30,00" }), pair).levels[0]?.price, "30.00");
 });
 
 test("children get unique salts and Permit2 nonces", () => {
@@ -258,6 +269,7 @@ test("parseDecimal/formatScaled round-trip", () => {
   assert.equal(parseDecimal("40.10", 2), 4010n);
   assert.equal(formatScaled(4010n, 2), "40.10");
   assert.equal(formatScaled(5n, 2), "0.05");
+  assert.equal(parseDecimal("40,10", 2), 4010n);
   assert.throws(() => parseDecimal("-1", 2), /decimal number/);
   assert.throws(() => parseDecimal("1e5", 2), /decimal number/);
 });
