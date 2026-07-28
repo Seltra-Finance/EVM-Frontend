@@ -6,17 +6,11 @@ import { formatToken } from "@/lib/format";
 import { HIGH_SLIPPAGE_BPS, validateCustomSlippagePercent } from "@/lib/order-validation";
 import type { OrderEntryMachine } from "@/hooks/use-order-entry-machine";
 import { AvaxSwitch } from "@/components/avax-switch";
-import { ExpiryControl, presetsWithinMax } from "@/components/expiry-control";
+import { ExpiryControl, expiryLabelFor } from "@/components/expiry-control";
 import { GridOrderForm } from "@/components/grid-order-form";
 import { InfoTip } from "@/components/info-tip";
 import { displaySymbol, TokenIcon } from "@/components/token-icon";
 import { isWavax, pairHasWavaxLeg, seltraConfig } from "@/config/seltra.config";
-
-const EXPIRY_OPTIONS = presetsWithinMax(seltraConfig.maxExpirySeconds);
-
-function expiryLabel(seconds: number): string {
-  return EXPIRY_OPTIONS.find((option) => option.seconds === seconds)?.label ?? `${seconds}s`;
-}
 
 const SLIPPAGE_PRESET_BPS = [10, 50, 100];
 
@@ -112,7 +106,7 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
             {advancedOpen ? (
               <div className="field advanced-field">
                 <span className="field-label">
-                  Expiry <small>Maximum {expiryLabel(seltraConfig.maxExpirySeconds)}</small>
+                  Expiry <small>Maximum {expiryLabelFor(seltraConfig.maxExpirySeconds)}</small>
                 </span>
                 <ExpiryControl seconds={m.expirySeconds} onChange={m.setExpirySeconds} onValidChange={m.setExpiryValid} idPrefix="limit-expiry" />
               </div>
@@ -150,7 +144,7 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
         </div>
         <div>
           <span>Expiry</span>
-          <strong className="number">{m.kind === "market" ? "10m" : expiryLabel(m.expirySeconds)}</strong>
+          <strong className="number">{m.kind === "market" ? "10m" : expiryLabelFor(m.expirySeconds)}</strong>
         </div>
       </div>
       {m.needsApproval ? <p className="approval-note"><ShieldCheck size={15} /> One-time Permit2 approval. Seltra never receives a standing approval.</p> : null}
