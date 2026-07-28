@@ -6,6 +6,7 @@ test("custom slippage: valid percentages convert to exact bps", () => {
   assert.deepEqual(validateCustomSlippagePercent("0.35"), { ok: true, value: 35 });
   assert.deepEqual(validateCustomSlippagePercent("1"), { ok: true, value: 100 });
   assert.deepEqual(validateCustomSlippagePercent("0.01"), { ok: true, value: 1 });
+  assert.deepEqual(validateCustomSlippagePercent("0,35"), { ok: true, value: 35 });
   assert.deepEqual(validateCustomSlippagePercent("99.99"), { ok: true, value: 9_999 });
 });
 
@@ -38,6 +39,7 @@ test("custom expiry: valid day counts round to whole seconds", () => {
   assert.deepEqual(validateCustomExpiryDays("1", 604_800), { ok: true, value: 86_400 });
   assert.deepEqual(validateCustomExpiryDays("0.5", 604_800), { ok: true, value: 43_200 });
   assert.deepEqual(validateCustomExpiryDays("7", 604_800), { ok: true, value: 604_800 });
+  assert.deepEqual(validateCustomExpiryDays("0,5", 604_800), { ok: true, value: 43_200 });
 });
 
 test("custom expiry: seven-day mainnet maximum is enforced, not silently clamped", () => {

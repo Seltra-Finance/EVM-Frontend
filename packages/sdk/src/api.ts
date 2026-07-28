@@ -7,6 +7,7 @@ import type {
   Candle,
   ClientMsg,
   ExecutableQuote,
+  MarketPolicy,
   LevelChange,
   OrderRecord,
   OrderStatus,
@@ -78,6 +79,13 @@ export class SeltraApi {
     const response = await fetch(`${this.cfg.restUrl}/orderbook/${pair}`);
     if (!response.ok) throw new Error(`Orderbook request failed (${response.status})`);
     return (await response.json()) as BookSnapshot;
+  }
+
+  /** Authoritative per-market admission minimums published by the orderbook API. */
+  async getMarkets(): Promise<MarketPolicy[]> {
+    const response = await fetch(`${this.cfg.restUrl}/markets`);
+    if (!response.ok) throw new Error(`Markets request failed (${response.status})`);
+    return (await response.json()) as MarketPolicy[];
   }
 
   async getCandles(pair: string, intervalSeconds: number): Promise<Candle[]> {

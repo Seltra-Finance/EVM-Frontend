@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import type { BookSnapshot, Candle, ConnectionStatus, ExecutableQuote, OrderRecord, ProtocolStats, QuotePoint, TradePrint, VenueQuotePoint } from "@seltra/sdk";
+import type { BookSnapshot, Candle, ConnectionStatus, ExecutableQuote, MarketPolicy, OrderRecord, ProtocolStats, QuotePoint, TradePrint, VenueQuotePoint } from "@seltra/sdk";
 import { seltraApi } from "@/lib/api";
 
 export function useWsStatus(): ConnectionStatus {
@@ -35,6 +35,15 @@ export function useOrderbook(pairId: string) {
     [pairId, queryClient],
   );
   return query;
+}
+
+export function useMarkets() {
+  return useQuery<MarketPolicy[]>({
+    queryKey: ["seltra", "markets"],
+    queryFn: () => seltraApi.getMarkets(),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
 }
 
 export function useMyOrders() {

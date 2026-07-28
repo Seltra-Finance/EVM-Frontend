@@ -1,4 +1,5 @@
 import { keccak256, stringToHex, type Address, type Hex } from "viem";
+import { normalizeDecimalInput } from "./order";
 import { buildOrder } from "./order";
 import type { Order, Permit2Data, SignedOrder } from "./types";
 
@@ -62,6 +63,18 @@ export interface GridPlan {
   requiredQuote: bigint;
 }
 
+export function findUndersizedGridLevel(
+  plan: GridPlan,
+  minimumQuoteNotional: bigint,
+): { level: GridLevel; quoteNotional: bigint } | null {
+  if (minimumQuoteNotional <= 0n) return null;
+  for (const level of plan.levels) {
+    const quoteNotional = level.side === "buy" ? level.makingAmount : level.takingAmount;
+    if (quoteNotional < minimumQuoteNotional) return { level, quoteNotional };
+  }
+  return null;
+}
+
 export interface GridBuiltOrder {
   levelIndex: number;
   side: "buy" | "sell";
@@ -94,7 +107,7 @@ export interface GridManifest {
  * precision beyond `scale` instead of silently truncating.
  */
 export function parseDecimal(value: string, scale: number, label = "value"): bigint {
-  const match = /^(\d+)(?:\.(\d*))?$/.exec(value.trim());
+  const match = /^(\d+)(?:\.(\d*))?$/.exec(normalizeDecimalInput(value));
   if (!match) throw new GridPlanError("bad-number", `${label} must be a plain decimal number`);
   const [, whole, fracRaw = ""] = match;
   if (fracRaw.length > scale && !/^0*$/.test(fracRaw.slice(scale))) {

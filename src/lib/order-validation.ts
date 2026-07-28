@@ -1,4 +1,4 @@
-import { GridPlanError, parseDecimal } from "@seltra/sdk";
+import { GridPlanError, normalizeDecimalInput, parseDecimal } from "@seltra/sdk";
 
 // Pure validation, kept out of the React components so it's unit-testable
 // without a rendering harness. Both the Market slippage input and the Limit
@@ -40,7 +40,7 @@ function maxDaysLabel(maxSeconds: number): string {
  * over-the-configured-maximum input — never silently clamped.
  */
 export function validateCustomExpiryDays(raw: string, maxSeconds: number): ValidationResult<number> {
-  const trimmed = raw.trim();
+  const trimmed = normalizeDecimalInput(raw);
   if (trimmed === "") return { ok: false, error: "Enter a number of days" };
   if (!/^\d+(?:\.\d*)?$/.test(trimmed)) return { ok: false, error: "Enter a valid number of days" };
   const days = Number(trimmed);

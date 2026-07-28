@@ -154,6 +154,17 @@ export interface ExecutableQuote {
   ts: number;
 }
 
+/** Public per-market admission policy. Execution profitability is enforced separately by the keeper. */
+export interface MarketPolicy {
+  pair: string;
+  baseToken: Address;
+  quoteToken: Address;
+  quoteSymbol: string;
+  quoteDecimals: number;
+  minOrderNotional: string;
+  minOrderNotionalFormatted: string;
+}
+
 /**
  * `totalVolumeQuote`/`quoteSymbol` are only present when unambiguous: a
  * single-pair request, or an all-markets request where every configured pair
