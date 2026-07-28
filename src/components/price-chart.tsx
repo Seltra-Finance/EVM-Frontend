@@ -14,7 +14,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Camera, CandlestickChart, Maximize2 } from "lucide-react";
 import { pairById } from "@/config/seltra.config";
-import { useCandles, useQuote, useQuoteHistory } from "@/lib/market-data";
+import { useCandles, useQuote, useQuoteHistory, useVenueQuoteHistory } from "@/lib/market-data";
 
 const INTERVALS: { label: string; seconds: number }[] = [
   { label: "1m", seconds: 60 },
@@ -42,6 +42,7 @@ export function PriceChart({ pairId }: { pairId: string }) {
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const marketLineRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const venueHistorySeriesRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const venuePriceLinesRef = useRef<IPriceLine[]>([]);
   const quoteRangeRef = useRef<{ min: number; max: number } | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -49,13 +50,16 @@ export function PriceChart({ pairId }: { pairId: string }) {
   const { data: candles, isLoading } = useCandles(pair.id, intervalSeconds);
   const { data: quote } = useQuote(pair.id);
   const { data: quoteHistory } = useQuoteHistory(pair.id);
+  const { data: venueQuoteHistory } = useVenueQuoteHistory(pair.id);
 
   useEffect(() => {
     if (!ref.current) return;
+    const venueHistorySeries = venueHistorySeriesRef.current;
     const style = getComputedStyle(document.documentElement);
     setIsReady(false);
     const chart: IChartApi = createChart(ref.current, {
-      height: 366,
+      width: ref.current.clientWidth,
+      height: ref.current.clientHeight || 360,
       layout: {
         background: { type: ColorType.Solid, color: style.getPropertyValue("--bg-base").trim() },
         textColor: style.getPropertyValue("--text-2").trim(),
@@ -103,7 +107,13 @@ export function PriceChart({ pairId }: { pairId: string }) {
     candleSeriesRef.current = series;
     volumeSeriesRef.current = volume;
     marketLineRef.current = marketLine;
-    const resize = () => chart.applyOptions({ width: ref.current?.clientWidth ?? 0 });
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const element = ref.current;
+      if (!element) return;
+      const width = Math.floor(entry?.contentRect.width ?? element.clientWidth);
+      const height = Math.floor(entry?.contentRect.height ?? element.clientHeight);
+      if (width > 0 && height > 0) chart.applyOptions({ width, height });
+    });
     const updatePalette = () => {
       const nextStyle = getComputedStyle(document.documentElement);
       chart.applyOptions({
@@ -117,16 +127,16 @@ export function PriceChart({ pairId }: { pairId: string }) {
     };
     const themeObserver = new MutationObserver(updatePalette);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    resize();
+    resizeObserver.observe(ref.current);
     setIsReady(true);
-    window.addEventListener("resize", resize);
     return () => {
-      window.removeEventListener("resize", resize);
+      resizeObserver.disconnect();
       themeObserver.disconnect();
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       marketLineRef.current = null;
+      venueHistorySeries.clear();
       venuePriceLinesRef.current = [];
       chart.remove();
     };
@@ -167,11 +177,16 @@ export function PriceChart({ pairId }: { pairId: string }) {
     }
   }, [candles]);
 
-  // Sampled market-price line: one point per observed quote, deduped per second,
-  // gaps left as gaps. Continuous context even when the fill tape is sparse.
+  // Keep the legacy best-price history as a rolling-deployment fallback. Once
+  // per-venue history exists, the chart renders the independently colored
+  // executable histories instead of a misleading single aggregate line.
   useEffect(() => {
     const line = marketLineRef.current;
     if (!line || !quoteHistory) return;
+    if ((venueQuoteHistory?.length ?? 0) > 0) {
+      line.setData([]);
+      return;
+    }
     const points: LineData[] = [];
     let lastSecond = -1;
     for (const point of quoteHistory) {
@@ -181,10 +196,41 @@ export function PriceChart({ pairId }: { pairId: string }) {
       points.push({ time: second as UTCTimestamp, value: point.price });
     }
     line.setData(points);
-  }, [quoteHistory]);
+  }, [quoteHistory, venueQuoteHistory]);
 
-  // Current executable prices from every available venue. The historical line
-  // remains the best executable quote sampled by the API.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !venueQuoteHistory) return;
+    const grouped = new Map<string, LineData[]>();
+    const lastSecond = new Map<string, number>();
+    for (const point of venueQuoteHistory) {
+      if (!Number.isFinite(point.price) || point.price <= 0) continue;
+      const second = Math.floor(point.t / 1000);
+      if (second <= (lastSecond.get(point.name) ?? -1)) continue;
+      lastSecond.set(point.name, second);
+      const points = grouped.get(point.name) ?? [];
+      points.push({ time: second as UTCTimestamp, value: point.price });
+      grouped.set(point.name, points);
+    }
+
+    for (const series of venueHistorySeriesRef.current.values()) series.setData([]);
+    for (const [index, [name, points]] of [...grouped.entries()].entries()) {
+      let series = venueHistorySeriesRef.current.get(name);
+      if (!series) {
+        series = chart.addLineSeries({
+          color: venueColor(name, index),
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: true,
+        });
+        venueHistorySeriesRef.current.set(name, series);
+      }
+      series.setData(points);
+    }
+  }, [venueQuoteHistory]);
+
+  // Current executable prices from every available venue.
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -273,7 +319,7 @@ export function PriceChart({ pairId }: { pairId: string }) {
       </div>
       <div className={`chart-wrap ${isReady ? "ready" : ""}`}>
         {!isReady || isLoading ? <div className="chart-skeleton" aria-label="Loading price chart"><span /><span /><span /><span /><span /></div> : null}
-        {isReady && !isLoading && !hasCandles && (quoteHistory?.length ?? 0) === 0 ? (
+        {isReady && !isLoading && !hasCandles && (quoteHistory?.length ?? 0) === 0 && (venueQuoteHistory?.length ?? 0) === 0 ? (
           <div className="chart-empty">
             <CandlestickChart size={20} />
             <strong>No fills yet</strong>

@@ -12,6 +12,7 @@ import type {
   OrderStatus,
   ProtocolStats,
   QuotePoint,
+  VenueQuotePoint,
   TradePrint,
   ServerMsg,
   SignedOrder,
@@ -99,6 +100,14 @@ export class SeltraApi {
     const response = await fetch(`${this.cfg.restUrl}/quote-history/${pair}${qs}`);
     if (!response.ok) throw new Error(`Quote history request failed (${response.status})`);
     return (await response.json()) as QuotePoint[];
+  }
+
+  /** Per-venue executable router-quote samples since `fromMs`. */
+  async getVenueQuoteHistory(pair: string, fromMs?: number): Promise<VenueQuotePoint[]> {
+    const qs = fromMs ? `?from=${fromMs}` : "";
+    const response = await fetch(`${this.cfg.restUrl}/venue-quote-history/${pair}${qs}`);
+    if (!response.ok) throw new Error(`Venue quote history request failed (${response.status})`);
+    return (await response.json()) as VenueQuotePoint[];
   }
 
   /** Recent settled fills on the venue tape, newest first. */

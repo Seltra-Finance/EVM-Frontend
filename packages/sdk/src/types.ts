@@ -137,6 +137,11 @@ export interface QuotePoint {
   price: number;
 }
 
+/** One venue-specific executable router-quote sample (ms timestamp). */
+export interface VenueQuotePoint extends QuotePoint {
+  name: string;
+}
+
 /** Live executable price from the aggregation router, best across venues. */
 export interface ExecutableQuote {
   pair: string;
@@ -144,6 +149,8 @@ export interface ExecutableQuote {
   price: number;
   venue: string;
   venues: { name: string; price: number }[];
+  /** Base-token size used for the normalized public reference quote. */
+  referenceBaseAmount?: string;
   ts: number;
 }
 
