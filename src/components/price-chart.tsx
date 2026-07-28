@@ -296,14 +296,18 @@ export function PriceChart({ pairId }: { pairId: string }) {
             {rangeChange !== undefined ? (
               <span className={`number chart-change ${rangeChange < 0 ? "down" : ""}`}>{rangeChange >= 0 ? "+" : ""}{rangeChange.toFixed(2)}%</span>
             ) : null}
-            {quote?.venues.map((venue, index) => (
-              <span className={venue.name === quote.venue ? "venue-best" : undefined} key={venue.name}>
-                <i className="legend-venue" style={{ backgroundColor: venueColor(venue.name, index) }} />
-                {venue.name} {venue.price.toFixed(pair.pricePrecision)}
-                {venue.name === quote.venue ? " · Best" : ""}
-              </span>
-            ))}
           </div>
+          {quote && quote.venues.length > 0 ? (
+            <div className="chart-venue-legend" aria-label="Venues quoting this pair">
+              {quote.venues.map((venue, index) => (
+                <span className={venue.name === quote.venue ? "venue-best" : undefined} key={venue.name}>
+                  <i className="legend-venue" style={{ backgroundColor: venueColor(venue.name, index) }} aria-hidden />
+                  {venue.name} <b className="number">{venue.price.toFixed(pair.pricePrecision)}</b>
+                  {venue.name === quote.venue ? <em className="venue-best-tag">Best</em> : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="chart-controls" aria-label="Chart interval">
           <div className="timeframe-controls">

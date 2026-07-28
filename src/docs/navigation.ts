@@ -49,6 +49,12 @@ export const docsSections: DocSection[] = [
         "concepts/cancellation-expiry-and-pause",
         "Concepts",
       ),
+      page(
+        "App Trading Guide",
+        "concepts/app-trading-guide",
+        "concepts/app-trading-guide",
+        "Concepts",
+      ),
     ],
   },
   {

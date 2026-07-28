@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { formatUnits, type Address, type Hex } from "viem";
+import { useEffect, useRef, useState } from "react";
+import { formatEther, formatUnits, type Address, type Hex } from "viem";
 import {
   useAccount,
+  useBalance,
   usePublicClient,
   useReadContract,
   useSignTypedData,
@@ -13,12 +14,14 @@ import {
 import { erc20Abi, seltraSettlementAbi } from "@/lib/abi";
 import {
   isConfiguredAddress,
+  isWavax,
   pairById,
   seltraConfig,
   tokenBySymbol,
   type PairConfig,
   type TokenConfig,
 } from "@/config/seltra.config";
+import { useAvaxWrap } from "@/hooks/use-avax-wrap";
 import { seltraApi } from "@/lib/api";
 import {
   GridPlanError,
@@ -38,6 +41,7 @@ import {
   type GridSubmitResult,
 } from "@seltra/sdk";
 import { saveGridManifest } from "@/lib/grid-manifests";
+import { presetsWithinMax } from "@/components/expiry-control";
 import { activeChain } from "@/lib/wallet";
 import { useWalletDialog } from "@/components/wallet-button";
 
@@ -48,6 +52,8 @@ import { useWalletDialog } from "@/components/wallet-button";
 export type GridFlowState =
   | { tag: "editing" }
   | { tag: "reviewing" }
+  | { tag: "needs-wrap" }
+  | { tag: "wrapping" }
   | { tag: "needs-base-approval" }
   | { tag: "approving-base"; hash?: Hex }
   | { tag: "needs-quote-approval" }
@@ -59,15 +65,16 @@ export type GridFlowState =
   | { tag: "partial-failure"; manifest: GridManifest }
   | { tag: "rejected"; reason: string };
 
-const ALL_GRID_EXPIRY_OPTIONS = [
+// Grids are meant to sit for a while, so the 1h preset from the single-order
+// expiry control is dropped here — Custom still reaches any value up to the
+// configured maximum (mainnet launch policy: 7 days).
+export const GRID_BASE_EXPIRY_PRESETS = [
   { label: "1 day", seconds: 86_400 },
   { label: "7 days", seconds: 604_800 },
   { label: "30 days", seconds: 2_592_000 },
 ] as const;
 
-export const GRID_EXPIRY_OPTIONS = ALL_GRID_EXPIRY_OPTIONS.filter(
-  (option) => option.seconds <= seltraConfig.maxExpirySeconds,
-);
+export const GRID_EXPIRY_OPTIONS = presetsWithinMax(seltraConfig.maxExpirySeconds, GRID_BASE_EXPIRY_PRESETS);
 
 export interface GridOrderMachine {
   pair: PairConfig;
@@ -86,6 +93,9 @@ export interface GridOrderMachine {
   setQuoteBudget: (value: string) => void;
   expirySeconds: number;
   setExpirySeconds: (seconds: number) => void;
+  /** Custom-expiry validity from ExpiryControl; false blocks Preview/review. */
+  expiryValid: boolean;
+  setExpiryValid: (valid: boolean) => void;
   setMaxBaseBudget: () => void;
   setMaxQuoteBudget: () => void;
 
@@ -97,6 +107,16 @@ export interface GridOrderMachine {
   baseBalance: bigint | undefined;
   quoteBalance: bigint | undefined;
 
+  /** True only when one leg of this pair is WAVAX — the leg native AVAX can fund. */
+  nativeAvaxApplicable: boolean;
+  /** Which budget native AVAX would fund, when applicable. */
+  wavaxLeg: "base" | "quote" | null;
+  useNativeAvax: boolean;
+  setUseNativeAvax: (value: boolean) => void;
+  nativeBalance: bigint | undefined;
+  /** WAVAX still needed on the wavaxLeg budget beyond its current WAVAX balance. */
+  wavaxDeficit: bigint;
+
   isConnected: boolean;
   wrongNetwork: boolean;
   fillsPaused: boolean;
@@ -106,8 +126,10 @@ export interface GridOrderMachine {
   state: GridFlowState;
   /** Validate the form and open the review ladder. No wallet prompt. */
   review: () => void;
-  /** From review: request the first missing approval or go straight to signing readiness. */
+  /** From review: request a wrap if needed, else the first missing approval, else signing readiness. */
   beginApprovals: () => void;
+  /** From needs-wrap: wraps the AVAX deficit into WAVAX, then continues into approvals. */
+  wrap: () => void;
   approve: () => void;
   signAndSubmit: () => void;
   /** Before submission: discard everything in memory and submit nothing. */
@@ -139,9 +161,17 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
   const [expirySeconds, setExpirySecondsRaw] = useState<number>(
     Math.min(604_800, seltraConfig.maxExpirySeconds),
   );
+  const [expiryValid, setExpiryValid] = useState(true);
+  const [useNativeAvax, setUseNativeAvaxRaw] = useState(false);
+  const [gasReserve, setGasReserve] = useState<bigint | undefined>(undefined);
   const [state, setState] = useState<GridFlowState>({ tag: "editing" });
   const [plan, setPlan] = useState<GridPlan | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const { wrap: wrapAvax, estimateGasReserve, error: wrapError, reset: resetWrap } = useAvaxWrap();
+
+  // A grid pair has at most one WAVAX leg; native AVAX can only ever fund that one.
+  const wavaxLeg: "base" | "quote" | null = isWavax(base) ? "base" : isWavax(quote) ? "quote" : null;
+  const nativeAvaxApplicable = wavaxLeg !== null;
 
   const stopRef = useRef(false);
   // Signed children live only here (memory) so a partial API failure can be
@@ -188,9 +218,44 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     functionName: "fillsPaused",
     query: { enabled: isConfiguredAddress(seltraConfig.contracts.settlement), refetchInterval: 15_000 },
   });
+  const { data: nativeBalanceData } = useBalance({
+    address,
+    query: { enabled: Boolean(address) && nativeAvaxApplicable },
+  });
+  const nativeBalance = nativeBalanceData?.value;
 
   const wrongNetwork = isConnected && chainId !== seltraConfig.chainId;
   const configured = isConfiguredAddress(seltraConfig.contracts.settlement);
+
+  const spendableNative = nativeBalance !== undefined && gasReserve !== undefined ? (nativeBalance > gasReserve ? nativeBalance - gasReserve : 0n) : 0n;
+  const effectiveBaseAvailable = wavaxLeg === "base" && useNativeAvax && baseBalance !== undefined ? baseBalance + spendableNative : baseBalance;
+  const effectiveQuoteAvailable = wavaxLeg === "quote" && useNativeAvax && quoteBalance !== undefined ? quoteBalance + spendableNative : quoteBalance;
+  // Only meaningful once a plan exists (post-review); the deficit is against
+  // whichever budget sits on the WAVAX leg, never speculative.
+  const wavaxDeficit = (() => {
+    if (!nativeAvaxApplicable || !useNativeAvax || !plan) return 0n;
+    if (wavaxLeg === "base") return baseBalance !== undefined && plan.requiredBase > baseBalance ? plan.requiredBase - baseBalance : 0n;
+    if (wavaxLeg === "quote") return quoteBalance !== undefined && plan.requiredQuote > quoteBalance ? plan.requiredQuote - quoteBalance : 0n;
+    return 0n;
+  })();
+
+  useEffect(() => {
+    if (!nativeAvaxApplicable || !useNativeAvax || !address) {
+      setGasReserve(undefined);
+      return;
+    }
+    let cancelled = false;
+    void estimateGasReserve().then((reserve) => {
+      if (!cancelled) setGasReserve(reserve);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeAvaxApplicable, useNativeAvax, address, estimateGasReserve]);
+
+  useEffect(() => {
+    if (!nativeAvaxApplicable && useNativeAvax) setUseNativeAvaxRaw(false);
+  }, [nativeAvaxApplicable, useNativeAvax]);
 
   function editField<T>(setter: (value: T) => void) {
     return (value: T) => {
@@ -232,8 +297,8 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
       setFormError("Fills are paused by the guardian. You can still cancel orders, but new grids are blocked.");
       return;
     }
-    if (expirySeconds > seltraConfig.maxExpirySeconds) {
-      setFormError("Grid expiry exceeds the configured maximum.");
+    if (!expiryValid || expirySeconds <= 0 || expirySeconds > seltraConfig.maxExpirySeconds) {
+      setFormError(`Expiry must be above zero and at most ${Math.round(seltraConfig.maxExpirySeconds / 86_400)} days.`);
       return;
     }
     const config = currentConfig();
@@ -256,12 +321,20 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
       setFormError("Wallet balances unavailable. Check your RPC connection and try again.");
       return;
     }
-    if (nextPlan.requiredBase > baseBalance) {
-      setFormError(`Base budget exceeds your ${base.symbol} balance`);
+    if (nextPlan.requiredBase > (effectiveBaseAvailable ?? baseBalance)) {
+      setFormError(
+        wavaxLeg === "base" && useNativeAvax
+          ? `Base budget exceeds your ${base.symbol} balance plus wrappable AVAX`
+          : `Base budget exceeds your ${base.symbol} balance`,
+      );
       return;
     }
-    if (nextPlan.requiredQuote > quoteBalance) {
-      setFormError(`Quote budget exceeds your ${quote.symbol} balance`);
+    if (nextPlan.requiredQuote > (effectiveQuoteAvailable ?? quoteBalance)) {
+      setFormError(
+        wavaxLeg === "quote" && useNativeAvax
+          ? `Quote budget exceeds your ${quote.symbol} balance plus wrappable AVAX`
+          : `Quote budget exceeds your ${quote.symbol} balance`,
+      );
       return;
     }
     setPlan(nextPlan);
@@ -277,7 +350,36 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
 
   function beginApprovals() {
     if (!plan) return;
+    if (wavaxDeficit > 0n) {
+      setState({ tag: "needs-wrap" });
+      return;
+    }
     advanceApprovals(plan, { base: baseAllowance ?? 0n, quote: quoteAllowance ?? 0n });
+  }
+
+  async function performWrap() {
+    if (!plan) return;
+    if (wavaxDeficit <= 0n) {
+      advanceApprovals(plan, { base: baseAllowance ?? 0n, quote: quoteAllowance ?? 0n });
+      return;
+    }
+    setState({ tag: "wrapping" });
+    const reserve = gasReserve ?? (await estimateGasReserve());
+    if (nativeBalance === undefined || nativeBalance < wavaxDeficit + reserve) {
+      setState({
+        tag: "rejected",
+        reason: `Not enough AVAX to wrap ${formatEther(wavaxDeficit)} and still cover an estimated ${formatEther(reserve)} AVAX of gas. Reduce the budget or add AVAX.`,
+      });
+      return;
+    }
+    const ok = await wrapAvax(wavaxDeficit);
+    if (!ok) {
+      setState({ tag: "rejected", reason: wrapError ?? "Wrap failed" });
+      return;
+    }
+    // Trust only fresh allowance reads before moving on to approvals.
+    const [freshBase, freshQuote] = await Promise.all([refetchBaseAllowance(), refetchQuoteAllowance()]);
+    advanceApprovals(plan, { base: freshBase.data ?? 0n, quote: freshQuote.data ?? 0n });
   }
 
   async function approveToken(token: TokenConfig, tag: "approving-base" | "approving-quote") {
@@ -430,6 +532,7 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     stopRef.current = true;
     if (
       state.tag === "reviewing" ||
+      state.tag === "needs-wrap" ||
       state.tag === "needs-base-approval" ||
       state.tag === "needs-quote-approval" ||
       state.tag === "ready-to-sign"
@@ -453,6 +556,7 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
   }
 
   const busy =
+    state.tag === "wrapping" ||
     state.tag === "approving-base" ||
     state.tag === "approving-quote" ||
     state.tag === "signing" ||
@@ -474,17 +578,29 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     setQuoteBudget: editField(setQuoteBudgetRaw),
     expirySeconds,
     setExpirySeconds: editField(setExpirySecondsRaw),
+    expiryValid,
+    setExpiryValid,
     setMaxBaseBudget: () => {
-      if (baseBalance !== undefined) editField(setBaseBudgetRaw)(formatUnits(baseBalance, base.decimals));
+      if (effectiveBaseAvailable !== undefined) editField(setBaseBudgetRaw)(formatUnits(effectiveBaseAvailable, base.decimals));
     },
     setMaxQuoteBudget: () => {
-      if (quoteBalance !== undefined) editField(setQuoteBudgetRaw)(formatUnits(quoteBalance, quote.decimals));
+      if (effectiveQuoteAvailable !== undefined) editField(setQuoteBudgetRaw)(formatUnits(effectiveQuoteAvailable, quote.decimals));
     },
     referencePrice,
     plan,
     formError,
     baseBalance,
     quoteBalance,
+    nativeAvaxApplicable,
+    wavaxLeg,
+    useNativeAvax,
+    setUseNativeAvax: (value: boolean) => {
+      setFormError(null);
+      resetWrap();
+      setUseNativeAvaxRaw(value);
+    },
+    nativeBalance,
+    wavaxDeficit,
     isConnected,
     wrongNetwork,
     fillsPaused: Boolean(fillsPaused),
@@ -493,6 +609,7 @@ export function useGridOrderMachine(params: { pairId: string; referencePrice?: n
     state,
     review,
     beginApprovals,
+    wrap: () => void performWrap(),
     approve,
     signAndSubmit: () => void runSignAndSubmit(),
     stop,

@@ -1,21 +1,67 @@
 "use client";
 
 import { Loader2, WifiOff } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
-import { defaultPairId } from "@/config/seltra.config";
+import { defaultPairId, resolveDisplayPairId, seltraConfig } from "@/config/seltra.config";
 import { NumberText } from "@/components/number-text";
 import { useStats } from "@/lib/market-data";
 
 export default function StatsPage() {
-  const { data: stats, isLoading, isError } = useStats();
+  return (
+    // useSearchParams needs a Suspense boundary in the app router.
+    <Suspense fallback={null}>
+      <StatsPageContent />
+    </Suspense>
+  );
+}
+
+function StatsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedPair = searchParams.get("pair");
+  // Resolve AVAX-alias display ids (e.g. "AVAX-USDC") to their canonical
+  // pair, and silently fall back to "all markets" for anything unknown —
+  // never error on a stale or hand-typed URL.
+  const selectedPairId = requestedPair ? resolveDisplayPairId(requestedPair) : undefined;
+  const { data: stats, isLoading, isError } = useStats(selectedPairId);
+  const pair = seltraConfig.pairs.find((candidate) => candidate.id === selectedPairId);
+
+  function setPair(nextPairId: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pair", nextPairId);
+    router.push(`/stats?${params.toString()}`, { scroll: false });
+  }
+
+  function clearPair() {
+    router.push("/stats", { scroll: false });
+  }
 
   return (
-    <AppShell pairId={defaultPairId}>
+    <AppShell pairId={selectedPairId ?? defaultPairId} onPairChange={setPair}>
       <main className="page-stack">
         <section className="page-heading">
           <div>
             <p className="eyebrow">Protocol</p>
             <h1>Stats</h1>
+          </div>
+          <div className="orders-tabs stats-scope" role="tablist" aria-label="Stats scope">
+            <button type="button" role="tab" aria-selected={!selectedPairId} className={!selectedPairId ? "active" : ""} onClick={clearPair}>
+              All markets
+            </button>
+            {seltraConfig.pairs.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                role="tab"
+                aria-selected={selectedPairId === candidate.id}
+                className={selectedPairId === candidate.id ? "active" : ""}
+                onClick={() => setPair(candidate.id)}
+              >
+                {candidate.base}/{candidate.quote}
+              </button>
+            ))}
           </div>
         </section>
         {isLoading ? (
@@ -33,8 +79,18 @@ export default function StatsPage() {
         {stats ? (
           <section className="panel detail-grid">
             <div>
-              <span className="label">Total volume</span>
-              <NumberText value={Number(stats.totalVolumeQuote)} suffix=" USDC" />
+              <span className="label">Total volume{pair ? ` · ${pair.id}` : ""}</span>
+              {stats.quoteSymbol && stats.totalVolumeQuote !== null ? (
+                <NumberText value={Number(stats.totalVolumeQuote)} suffix={` ${stats.quoteSymbol}`} />
+              ) : stats.volumeByQuote.length > 0 ? (
+                <div className="volume-by-quote">
+                  {stats.volumeByQuote.map((entry) => (
+                    <NumberText key={entry.quoteSymbol} value={Number(entry.amount)} suffix={` ${entry.quoteSymbol}`} />
+                  ))}
+                </div>
+              ) : (
+                <strong className="number">—</strong>
+              )}
             </div>
             <div>
               <span className="label">Orders filled</span>

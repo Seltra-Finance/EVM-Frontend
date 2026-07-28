@@ -65,6 +65,24 @@ export const erc20Abi = [
   },
 ] as const;
 
+/** WAVAX9: deposit() wraps msg.value 1:1, withdraw() unwraps back to native AVAX. */
+export const wavaxAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+] as const;
+
 export const permit2Abi = [
   {
     type: "function",

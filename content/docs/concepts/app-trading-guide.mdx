@@ -1,0 +1,51 @@
+---
+title: "App Trading Guide"
+description: "How the Seltra app maps Limit, Market, and Grid orders onto the underlying protocol, and how native AVAX funding works."
+section: "Concepts"
+order: 9
+---
+
+This page covers app-level behavior that sits on top of the [Order Model](/docs/concepts/order-model): Limit vs. Market pricing, native AVAX funding, custom expiry, mobile market switching, and pair-specific stats.
+
+### Limit price shortcuts vs. Market slippage
+
+These are two different concepts, and the app labels them differently on purpose:
+
+* **Limit orders have no slippage.** The limit price you sign is already the worst price you will accept — the order simply never fills below it. The **Price shortcuts** row (Mid, −1%, +1%) sets the limit price relative to the current reference price; it does not add any additional bound.
+* **Market orders sign a marketable limit with an explicit slippage bound.** Choose a preset (0.1% / 0.5% / 1.0%) or **Custom**, entered as a percentage with up to two decimal places (a whole number of basis points). The app converts your input to basis points with exact integer arithmetic — never floating-point multiplication — and rejects empty, non-numeric, zero, negative, or ≥100% input instead of silently adjusting it. 5% or higher shows a visible warning, but is still accepted if you confirm it. The order summary always shows both the live executable reference price and the exact worst acceptable price that gets signed. A market order still expires in 10 minutes if unfilled.
+
+### Custom expiry
+
+Limit and Grid orders share one expiry control: pick a preset or **Custom**, entered in days (decimals allowed, e.g. `0.5` for 12 hours). The maximum is derived from the deployment's configured policy — **7 days (604,800 seconds) at mainnet launch** — and is never silently clamped: an over-limit value shows an inline error and blocks Review/Preview until it's fixed. The computed expiry date and time is shown under the field. Market orders are exempt — they always expire in 10 minutes.
+
+### Native AVAX funding
+
+Seltra Settlement and Permit2 only ever operate on the WAVAX ERC-20 — **native AVAX is never an order asset, and it never appears as `address(0)` in an order, API request, pair registry, or signature.** On any pair with a WAVAX leg (`WAVAX/USDC`, `WETH.e/WAVAX`, `BTC.b/WAVAX`), the order form and Grid form show a compact **"Use native AVAX"** toggle next to that leg's balance instead of duplicating every market entry with an AVAX-labeled twin.
+
+When the toggle is on:
+
+1. The app determines how much WAVAX the order (or the Grid's budget) needs.
+2. It nets that against WAVAX you already hold.
+3. It wraps **only the missing amount** by calling WAVAX's `deposit()` with that exact native value — never more.
+4. It waits for on-chain confirmation, then refreshes your AVAX balance, WAVAX balance, and Permit2 allowance before continuing.
+5. Only then does the normal Permit2 approval and signing flow proceed.
+
+The call-to-action button reflects this explicitly as it progresses: **Wrap AVAX → Wrapping AVAX… → Approve WAVAX → Place order** (or **Sign N orders** for a Grid). Nothing is wrapped silently, and a rejected, reverted, or timed-out wrap transaction is reported plainly rather than retried automatically. **MAX** never spends the AVAX needed for gas — the app estimates the wrap transaction's gas cost plus headroom for the approval transaction that follows, and reserves that amount before offering the rest as spendable.
+
+<Callout type="warning">
+
+Receiving native AVAX is different from paying with it. When WAVAX is the asset you receive from a fill, Settlement transfers the WAVAX ERC-20 — **not native AVAX automatically.** The order summary says so explicitly. An optional, separate **Unwrap** action is available from the Balances view once you hold WAVAX; there is no automatic or silent unwrapping.
+
+</Callout>
+
+### Mobile market switching
+
+The market/pair selector is a dedicated `MarketSwitcher` component — a popover on desktop, a bottom sheet on mobile — and it is never hidden by responsive CSS at any width, including 320px. It supports full keyboard navigation (arrow keys, Home/End, Enter, Escape) and closes on an outside click. From the Trade view, choosing a pair navigates to that pair's terminal; from the Stats view, choosing a pair updates the page in place instead of navigating away.
+
+### Pair-specific stats
+
+The Stats page reads and writes its pair scope through the URL (`/stats?pair=<canonical-pair-id>`), so a stats view for one market is shareable as a link. Selecting a pair from Stats never navigates to Trade. Display-pair aliases that reference AVAX (e.g. `AVAX-USDC`) resolve to their canonical WAVAX pair before any request is made. When viewing **All markets**, volume is never summed across pairs that quote in different tokens — it either collapses to one figure when every pair happens to share a quote token, or is shown broken out per quote token.
+
+### Venue availability per pair
+
+The chart's venue legend is driven entirely by live quotes: the orderbook API polls every configured DEX adapter for every pair and simply omits a venue when its on-chain quote reverts. `BTC.b/WAVAX` has no LFJ liquidity route at mainnet launch, so its legend shows only **Blackhole** and **Pharaoh** — this is real venue availability, not a frontend override, and no venue is ever hardcoded into the legend.

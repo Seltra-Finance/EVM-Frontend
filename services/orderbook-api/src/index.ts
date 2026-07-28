@@ -237,7 +237,11 @@ const server = createServer(async (req, res) => {
       const from = Number(url.searchParams.get("from") ?? Date.now() - 86_400_000);
       return json(res, 200, quotes.getHistory(pair.id, from));
     }
-    if (req.method === "GET" && path === "/stats") return json(res, 200, store.stats());
+    if (req.method === "GET" && path === "/stats") {
+      const requestedPair = url.searchParams.get("pair");
+      if (requestedPair && !pairById(requestedPair)) return json(res, 404, { error: "Pair not supported" });
+      return json(res, 200, store.stats(requestedPair ?? undefined));
+    }
     // Operational metrics for monitoring/alerting; not part of the public API surface.
     if (req.method === "GET" && path === "/metrics") {
       const byStatus: Record<string, number> = {};

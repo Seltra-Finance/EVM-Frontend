@@ -248,3 +248,41 @@ export function tokenBySymbol(symbol: string): TokenConfig {
 export function isConfiguredAddress(address: Address): boolean {
   return address.toLowerCase() !== zeroAddress;
 }
+
+export const WAVAX_SYMBOL = "WAVAX";
+
+/**
+ * Native AVAX is a frontend funding convenience only — Seltra Settlement and
+ * Permit2 only ever operate on the WAVAX ERC-20. Native AVAX must never
+ * appear as address(0) (or any address) in an order, API request, pair
+ * registry, or signature: it has no address here on purpose. Any flow that
+ * lets a user fund with native AVAX wraps the deficit into WAVAX before an
+ * order is built.
+ */
+export const nativeAvax = { symbol: "AVAX", decimals: 18 } as const;
+
+export function isWavax(token: Pick<TokenConfig, "symbol">): boolean {
+  return token.symbol === WAVAX_SYMBOL;
+}
+
+/** True when a leg of this pair is WAVAX, so a native-AVAX funding shortcut can apply. */
+export function pairHasWavaxLeg(pair: PairConfig): boolean {
+  return pair.base === WAVAX_SYMBOL || pair.quote === WAVAX_SYMBOL;
+}
+
+/**
+ * Resolves a display pair id to its canonical pair id. Display ids may use
+ * the "AVAX" funding alias in place of a WAVAX leg (e.g. "AVAX-USDC" for
+ * canonical "WAVAX-USDC", or "WETH.e-AVAX" for canonical "WETH.e-WAVAX").
+ * This never introduces a second orderbook, history, or API pair id — the
+ * alias resolves to the exact same canonical pair.
+ */
+export function resolveDisplayPairId(input: string, pairs: PairConfig[] = seltraConfig.pairs): string | undefined {
+  const trimmed = input.trim();
+  if (pairs.some((pair) => pair.id === trimmed)) return trimmed;
+  const aliased = trimmed
+    .split("-")
+    .map((segment) => (segment === nativeAvax.symbol ? WAVAX_SYMBOL : segment))
+    .join("-");
+  return aliased !== trimmed && pairs.some((pair) => pair.id === aliased) ? aliased : undefined;
+}

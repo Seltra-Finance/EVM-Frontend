@@ -113,10 +113,11 @@ export function useVenueQuoteHistory(pairId: string) {
   });
 }
 
-export function useStats() {
+/** Omit `pair` for the all-markets view; pass a canonical pair id to scope every metric to it. */
+export function useStats(pair?: string) {
   return useQuery<ProtocolStats>({
-    queryKey: ["seltra", "stats"],
-    queryFn: () => seltraApi.getStats(),
+    queryKey: ["seltra", "stats", pair ?? "all"],
+    queryFn: () => seltraApi.getStats(pair),
     refetchInterval: 30_000,
     retry: 1,
   });

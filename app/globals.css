@@ -211,7 +211,7 @@ button:disabled {
   color: var(--text-3);
 }
 
-.pair-select,
+.dropdown-trigger,
 .field select,
 .field input {
   min-height: 42px;
@@ -225,7 +225,7 @@ button:disabled {
 
 .field input:focus,
 .field select:focus,
-.pair-select:focus,
+.dropdown-trigger:focus-visible,
 .button:focus-visible,
 .icon-button:focus-visible,
 .wallet-connected:focus-visible,
@@ -1175,16 +1175,56 @@ button:disabled {
   background: var(--buy);
 }
 
-.legend-lfj,
 .legend-venue {
-  width: 10px;
-  height: 1px;
-  border-radius: 0;
+  border-radius: 999px;
   background: var(--accent);
+  flex-shrink: 0;
 }
 
 .chart-legend .venue-best {
   color: var(--text-1);
+}
+
+.chart-venue-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.chart-venue-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.chart-venue-legend .venue-best {
+  color: var(--text-1);
+}
+
+.venue-best-tag {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-style: normal;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+  .chart-venue-legend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
 }
 
 .chart-controls {
@@ -1264,11 +1304,6 @@ button:disabled {
 @media (max-width: 768px) {
   .topbar {
     grid-template-columns: auto 1fr auto;
-  }
-
-  .network-chip,
-  .pair-select {
-    display: none;
   }
 
   .terminal-grid {
@@ -2160,13 +2195,13 @@ button:disabled {
   font-size: 10px;
 }
 
-.market-strip .pair-select {
+.market-strip .market-switcher-trigger {
   min-height: 34px;
   min-width: 150px;
   border: 0;
-  border-radius: 0;
+  border-radius: 6px;
   background: transparent;
-  padding-inline: 4px;
+  padding-inline: 8px;
   font-family: var(--font-mono), monospace;
   font-size: 14px;
   font-weight: 600;
@@ -2252,7 +2287,8 @@ button:disabled {
   font-family: var(--font-mono), monospace;
 }
 
-.terminal-grid .chart-legend {
+.terminal-grid .chart-legend,
+.terminal-grid .chart-venue-legend {
   gap: 8px;
   margin-top: 3px;
 }
@@ -2699,9 +2735,9 @@ button:disabled {
     padding: 0 10px;
   }
 
-  .market-strip .pair-select {
-    min-width: 120px;
-    min-height: 34px;
+  .market-strip .market-switcher-trigger {
+    min-width: 110px;
+    min-height: 44px;
     font-size: 12px;
   }
 
@@ -2966,7 +3002,7 @@ button:disabled {
 .exchange-nav .wallet-connected,
 .exchange-nav .icon-button,
 .market-strip .network-chip,
-.market-strip .pair-select {
+.market-strip .market-switcher-trigger {
   background: color-mix(in srgb, var(--bg-panel-header) 74%, transparent);
   backdrop-filter: blur(10px);
 }
@@ -2986,11 +3022,10 @@ button:disabled {
   border-right-color: color-mix(in srgb, var(--border-subtle) 68%, transparent);
 }
 
-.market-strip .pair-select {
+.market-strip .market-switcher-trigger {
   min-height: 30px;
   border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
   border-radius: 4px;
-  padding-inline: 8px 28px;
 }
 
 .market-strip .ticker-strip span {
@@ -3055,13 +3090,15 @@ button:disabled {
   letter-spacing: 0.01em;
 }
 
-.terminal-grid .chart-legend {
+.terminal-grid .chart-legend,
+.terminal-grid .chart-venue-legend {
   align-items: center;
   color: var(--text-3);
   font-size: 9px;
 }
 
-.terminal-grid .chart-legend .number {
+.terminal-grid .chart-legend .number,
+.terminal-grid .chart-venue-legend .number {
   color: var(--text-2);
 }
 
@@ -4520,4 +4557,381 @@ button:disabled {
 
 .strategy-tabs {
   margin-bottom: 2px;
+}
+
+/* --- Dropdown design system (MarketSwitcher, expiry, stats pair picker) -- */
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  cursor: pointer;
+  font-family: var(--font-ui), sans-serif;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+
+.dropdown-trigger:hover {
+  border-color: var(--border-strong);
+}
+
+.dropdown-trigger[aria-expanded="true"] {
+  border-color: var(--accent-soft);
+}
+
+.dropdown-chevron {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: transform var(--motion-fast);
+}
+
+.dropdown-trigger[aria-expanded="true"] .dropdown-chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.market-switcher {
+  position: relative;
+}
+
+.market-switcher-trigger {
+  padding-inline: 10px;
+}
+
+.market-switcher-symbols,
+.market-switcher-option-symbols {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-switcher-sep {
+  color: var(--text-3);
+}
+
+.market-switcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: transparent;
+}
+
+.market-switcher-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: max(280px, 100%);
+  max-height: min(70vh, 480px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-overlay);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.market-switcher-panel-title {
+  margin: 0;
+  padding: 10px 12px 6px;
+  color: var(--text-3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.market-switcher-options {
+  overflow-y: auto;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+}
+
+.market-switcher-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.market-switcher-option:hover,
+.market-switcher-option:focus-visible {
+  background: var(--bg-raised);
+  outline: none;
+}
+
+.market-switcher-option.selected {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.market-switcher-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.market-switcher-option-desc {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.market-switcher-option.selected .market-switcher-option-desc {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-3));
+}
+
+@media (max-width: 640px) {
+  .market-switcher-backdrop {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .market-switcher-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-height: 78vh;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.45);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .market-switcher-panel-title {
+    padding-top: 14px;
+    font-size: 11px;
+  }
+
+  .market-switcher-option {
+    min-height: 48px;
+  }
+}
+
+/* --- Footer social links ------------------------------------------------ */
+
+.footer-social {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.footer-social a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: var(--text-2);
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+
+.footer-social a:hover,
+.footer-social a:focus-visible {
+  color: var(--text-1);
+  background: var(--bg-raised);
+}
+
+/* --- Shared expiry control (Limit + Grid) -------------------------------- */
+
+.expiry-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.expiry-select {
+  width: 100%;
+}
+
+.expiry-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.field-error.form-error {
+  font-size: 11px;
+}
+
+/* --- Wallet balances panel ----------------------------------------------- */
+
+.balances-list {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--border-subtle);
+}
+
+.balances-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-raised);
+}
+
+.balances-row-symbol {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* --- Stats page: scope tabs + multi-quote-token volume breakdown -------- */
+
+.stats-scope {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.volume-by-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .page-heading {
+    flex-wrap: wrap;
+  }
+
+  .stats-scope {
+    width: 100%;
+  }
+}
+
+/* --- Native AVAX funding toggle ------------------------------------------ */
+
+.native-avax-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.toggle-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.native-avax-note {
+  margin: 0;
+  padding-left: 22px;
+}
+
+/* --- Order summary: WAVAX-output note ------------------------------------ */
+
+.summary-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  text-align: right;
+}
+
+.wavax-output-note {
+  max-width: 220px;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* --- WAVAX unwrap action (Balances panel) -------------------------------- */
+
+.balances-row-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.unwrap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.unwrap-toggle:hover {
+  color: var(--accent);
+}
+
+.unwrap-panel {
+  position: absolute;
+  right: 14px;
+  z-index: 20;
+  width: 220px;
+  margin-top: 4px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-overlay);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.balances-row {
+  position: relative;
+}
+
+.unwrap-panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.unwrap-panel-actions .button {
+  flex: 1;
+  min-height: 32px;
+  font-size: 12px;
+}
+
+/* --- Mobile touch targets: dropdowns and tab controls at >=44px --------- */
+
+@media (max-width: 768px) {
+  .dropdown-trigger,
+  .orders-tabs button,
+  .order-kind-tabs button,
+  .stats-scope button {
+    min-height: 44px;
+  }
 }

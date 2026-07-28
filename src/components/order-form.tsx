@@ -3,21 +3,20 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, PenLine, ShieldCheck, Wallet } from "lucide-react";
 import { useState } from "react";
 import { formatToken } from "@/lib/format";
+import { HIGH_SLIPPAGE_BPS, validateCustomSlippagePercent } from "@/lib/order-validation";
 import type { OrderEntryMachine } from "@/hooks/use-order-entry-machine";
+import { ExpiryControl, presetsWithinMax } from "@/components/expiry-control";
 import { GridOrderForm } from "@/components/grid-order-form";
 import { InfoTip } from "@/components/info-tip";
 import { seltraConfig } from "@/config/seltra.config";
 
-const EXPIRY_OPTIONS = [
-  { seconds: 3_600, label: "1h" },
-  { seconds: 86_400, label: "1d" },
-  { seconds: 604_800, label: "7d" },
-  { seconds: 2_592_000, label: "30d" },
-].filter((option) => option.seconds <= seltraConfig.maxExpirySeconds);
+const EXPIRY_OPTIONS = presetsWithinMax(seltraConfig.maxExpirySeconds);
 
 function expiryLabel(seconds: number): string {
   return EXPIRY_OPTIONS.find((option) => option.seconds === seconds)?.label ?? `${seconds}s`;
 }
+
+const SLIPPAGE_PRESET_BPS = [10, 50, 100];
 
 export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine; midPrice?: number }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -90,9 +89,10 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
           </button>
         </div>
         <small className="balance-line">Available <strong className="number">{m.balance === undefined ? "-" : formatToken(m.balance, makerAsset.decimals, 4)} {makerAsset.symbol}</strong></small>
+        {m.nativeAvaxApplicable ? <NativeAvaxToggle m={m} /> : null}
       </label>
       <div className="percent-buttons" aria-label="Amount presets">
-        {[25n, 50n, 75n, 100n].map((percent) => <button key={percent.toString()} type="button" onClick={() => m.setAmountPercent(percent)} disabled={!m.balance}>{percent.toString()}%</button>)}
+        {[25n, 50n, 75n, 100n].map((percent) => <button key={percent.toString()} type="button" onClick={() => m.setAmountPercent(percent)} disabled={!m.balance && !(m.useNativeAvax && m.nativeBalance)}>{percent.toString()}%</button>)}
       </div>
       {m.kind === "limit" ? (
         <>
@@ -103,12 +103,13 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
               <span>{quote.symbol}</span>
             </div>
           </label>
-          <div className="quick-price" aria-label="Quick price presets">
-            <span>Quick set</span>
+          <div className="quick-price" aria-label="Limit price shortcuts">
+            <span>Price shortcuts</span>
             <button type="button" disabled={!midPrice} title={midPrice ? undefined : "No executable quote or resting orders to derive a price from yet"} onClick={() => setQuickPrice(1)}>Mid</button>
             <button type="button" disabled={!midPrice} onClick={() => setQuickPrice(0.99)}>-1%</button>
             <button type="button" disabled={!midPrice} onClick={() => setQuickPrice(1.01)}>+1%</button>
           </div>
+          <p className="caption">Sets the limit price relative to the current reference price. Your order only fills at this price or better — a limit order has no slippage.</p>
           <div className="advanced-settings">
             <button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}><span>Advanced settings</span><ChevronDown size={15} /></button>
             {advancedOpen ? (
@@ -116,31 +117,13 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
                 <span className="field-label">
                   Expiry <small>Maximum {expiryLabel(seltraConfig.maxExpirySeconds)}</small>
                 </span>
-                <select value={m.expirySeconds} onChange={(event) => m.setExpirySeconds(Number(event.target.value))}>
-                  {EXPIRY_OPTIONS.map((option) => (
-                    <option key={option.seconds} value={option.seconds}>{option.label}</option>
-                  ))}
-                </select>
+                <ExpiryControl seconds={m.expirySeconds} onChange={m.setExpirySeconds} onValidChange={m.setExpiryValid} idPrefix="limit-expiry" />
               </label>
             ) : null}
           </div>
         </>
       ) : (
-        <>
-          <div className="quick-price" aria-label="Slippage bound">
-            <span>Max slippage</span>
-            {[10, 50, 100].map((bps) => (
-              <button key={bps} type="button" className={m.slippageBps === bps ? "active" : ""} onClick={() => m.setSlippageBps(bps)}>
-                {(bps / 100).toFixed(bps === 10 ? 1 : 1)}%
-              </button>
-            ))}
-          </div>
-          <p className="caption market-note">
-            {m.referencePrice !== undefined
-              ? `Signs a limit at ${m.effectivePrice} ${quote.symbol} (executable ${m.referencePrice.toFixed(m.pair.pricePrecision)} ${m.side === "sell" ? "−" : "+"} ${(m.slippageBps / 100).toFixed(1)}%). It cannot fill worse than this bound and expires in 10 minutes if unfilled.`
-              : "No executable quote available right now — market orders need a live venue price."}
-          </p>
-        </>
+        <MarketSlippagePanel m={m} />
       )}
       <div className="summary-box">
         <div>
@@ -151,9 +134,14 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
         </div>
         <div>
           <span>You receive at least</span>
-          <strong className="number">
-            {formatToken(m.takingAmount, takerAsset.decimals, 4)} {takerAsset.symbol}
-          </strong>
+          <span className="summary-value">
+            <strong className="number">
+              {formatToken(m.takingAmount, takerAsset.decimals, 4)} {takerAsset.symbol}
+            </strong>
+            {takerAsset.symbol === "WAVAX" ? (
+              <small className="wavax-output-note">Settlement transfers WAVAX, the wrapped-AVAX ERC-20 — not native AVAX automatically.</small>
+            ) : null}
+          </span>
         </div>
         <div className="summary-improvement">
           <span>Price improvement</span>
@@ -194,5 +182,111 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
       </div>
       {state.tag === "awaiting-signature" ? <div className="signature-pending" role="status"><div><Loader2 className="spin" size={20} /><h3>Confirm in wallet</h3><p>One signature. No gas. Funds stay in your wallet until the exact fill.</p></div></div> : null}
     </section>
+  );
+}
+
+/**
+ * Native AVAX is a frontend funding convenience: it always routes through a
+ * WAVAX wrap before anything is signed. Only shown when the maker asset for
+ * this side is WAVAX.
+ */
+function NativeAvaxToggle({ m }: { m: OrderEntryMachine }) {
+  return (
+    <div className="native-avax-toggle">
+      <label className="toggle-row">
+        <input type="checkbox" checked={m.useNativeAvax} onChange={(event) => m.setUseNativeAvax(event.target.checked)} />
+        <span>Use native AVAX</span>
+      </label>
+      {m.useNativeAvax ? (
+        <p className="caption native-avax-note">
+          {m.nativeBalance !== undefined ? `${formatToken(m.nativeBalance, 18, 4)} AVAX available. ` : ""}
+          AVAX routes through WAVAX —{" "}
+          {m.wavaxDeficit > 0n
+            ? `${formatToken(m.wavaxDeficit, 18, 6)} AVAX will be wrapped to WAVAX before signing.`
+            : "your existing WAVAX balance already covers this amount, so no wrap is needed."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Market orders sign a marketable limit; slippage is the only place that
+ * bound comes from (a plain Limit order has none — its price is the bound).
+ */
+function MarketSlippagePanel({ m }: { m: OrderEntryMachine }) {
+  const [customMode, setCustomMode] = useState(!SLIPPAGE_PRESET_BPS.includes(m.slippageBps));
+  const [customPercent, setCustomPercent] = useState(() => (customMode ? (m.slippageBps / 100).toString() : ""));
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  function selectPreset(bps: number) {
+    setCustomMode(false);
+    setCustomError(null);
+    m.setSlippageValid(true);
+    m.setSlippageBps(bps);
+  }
+
+  function updateCustom(raw: string) {
+    setCustomPercent(raw);
+    const result = validateCustomSlippagePercent(raw);
+    if (!result.ok) {
+      setCustomError(result.error);
+      m.setSlippageValid(false);
+      return;
+    }
+    setCustomError(null);
+    m.setSlippageValid(true);
+    m.setSlippageBps(result.value);
+  }
+
+  const isHighSlippage = customError === null && m.slippageBps >= HIGH_SLIPPAGE_BPS;
+
+  return (
+    <>
+      <div className="quick-price" aria-label="Slippage bound">
+        <span>Max slippage</span>
+        {SLIPPAGE_PRESET_BPS.map((bps) => (
+          <button key={bps} type="button" className={!customMode && m.slippageBps === bps ? "active" : ""} onClick={() => selectPreset(bps)}>
+            {(bps / 100).toFixed(1)}%
+          </button>
+        ))}
+        <button
+          type="button"
+          className={customMode ? "active" : ""}
+          onClick={() => {
+            setCustomMode(true);
+            updateCustom(customPercent);
+          }}
+        >
+          Custom
+        </button>
+      </div>
+      {customMode ? (
+        <div className="field advanced-field">
+          <div className="input-row">
+            <input
+              value={customPercent}
+              onChange={(event) => updateCustom(event.target.value)}
+              inputMode="decimal"
+              aria-label="Custom slippage percent"
+              aria-invalid={customError !== null}
+              placeholder="e.g. 0.35"
+            />
+            <span>%</span>
+          </div>
+          {customError ? <p className="form-error field-error" role="alert">{customError}</p> : null}
+        </div>
+      ) : null}
+      {isHighSlippage ? (
+        <p className="form-error field-error" role="alert">
+          <AlertTriangle size={12} /> {(m.slippageBps / 100).toFixed(2)}% is unusually high slippage — a fill could land well below the executable price.
+        </p>
+      ) : null}
+      <p className="caption market-note">
+        {m.referencePrice !== undefined
+          ? `Executable reference ${m.referencePrice.toFixed(m.pair.pricePrecision)} ${m.quote.symbol}. Signs a worst acceptable price of ${m.effectivePrice} ${m.quote.symbol} (${(m.slippageBps / 100).toFixed(2)}% ${m.side === "sell" ? "below" : "above"} reference). It cannot fill worse than this and expires in 10 minutes if unfilled.`
+          : "No executable quote available right now — market orders need a live venue price."}
+      </p>
+    </>
   );
 }

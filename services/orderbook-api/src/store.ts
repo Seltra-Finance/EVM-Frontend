@@ -6,7 +6,7 @@ import type { OrderRecord, OrderStatus, ProtocolStats, QuotePoint } from "@seltr
 import pg from "pg";
 import { formatUnits } from "viem";
 import { dedupeSettlements } from "./candles";
-import { config } from "./config";
+import { config, pairById } from "./config";
 
 const PG_SCHEMA = "seltra_orderbook";
 
@@ -40,7 +40,8 @@ export interface OrderStore {
   cancelBelowEpoch(maker: string, newEpoch: bigint): Promise<OrderRecord[]>;
   getQuoteHistory(pairId: string, fromMs?: number): QuotePoint[];
   appendQuote(pairId: string, point: QuotePoint): Promise<void>;
-  stats(): ProtocolStats;
+  /** Omit `pair` for an all-markets view; pass a canonical pair id to scope every metric to it. */
+  stats(pair?: string): ProtocolStats;
   snapshot(): StoreSnapshot;
   close(): Promise<void>;
 }
@@ -186,13 +187,10 @@ abstract class CachedOrderStore {
     }
   }
 
-  stats() {
-    const records = [...this.orders.values()];
+  stats(pair?: string): ProtocolStats {
+    const scoped = pair !== undefined;
+    const records = scoped ? [...this.orders.values()].filter((record) => record.pair === pair) : [...this.orders.values()];
     const filled = records.filter((record) => record.status === "filled");
-    const volume = dedupeSettlements(filled).reduce((sum, record) => {
-      const quoteAmount = record.side === "buy" ? record.order.makingAmount : record.order.takingAmount;
-      return sum + BigInt(quoteAmount);
-    }, 0n);
     const improvements = filled
       .filter((record) => record.fill)
       .map((record) => {
@@ -201,8 +199,34 @@ abstract class CachedOrderStore {
         return Number((BigInt(record.fill!.makerImprovement) * 10_000n) / taking);
       });
     const p2pFills = filled.filter((record) => record.fill?.path === "p2p").length;
+
+    // Volume is a quote-token amount: never sum it across pairs that quote in
+    // different tokens. A scoped call is always unambiguous (one pair, one
+    // quote token); an all-markets call groups by quote symbol and only
+    // collapses to a single number when every involved pair shares one.
+    const volumeByQuoteToken = new Map<string, bigint>();
+    for (const record of dedupeSettlements(filled)) {
+      const quoteSymbol = pairById(record.pair)?.quoteSymbol;
+      if (!quoteSymbol) continue;
+      const quoteAmount = BigInt(record.side === "buy" ? record.order.makingAmount : record.order.takingAmount);
+      volumeByQuoteToken.set(quoteSymbol, (volumeByQuoteToken.get(quoteSymbol) ?? 0n) + quoteAmount);
+    }
+    const quoteDecimalsFor = (quoteSymbol: string) =>
+      config.pairs.find((candidate) => candidate.quoteSymbol === quoteSymbol)?.quoteDecimals ?? 0;
+    const volumeByQuote = [...volumeByQuoteToken.entries()].map(([quoteSymbol, amount]) => ({
+      quoteSymbol,
+      amount: formatUnits(amount, quoteDecimalsFor(quoteSymbol)),
+    }));
+    const singleQuote = scoped
+      ? pairById(pair)?.quoteSymbol
+      : volumeByQuoteToken.size <= 1
+        ? [...volumeByQuoteToken.keys()][0]
+        : undefined;
+
     return {
-      totalVolumeQuote: formatUnits(volume, config.pairs[0].quoteDecimals),
+      totalVolumeQuote: singleQuote ? formatUnits(volumeByQuoteToken.get(singleQuote) ?? 0n, quoteDecimalsFor(singleQuote)) : null,
+      quoteSymbol: singleQuote ?? null,
+      volumeByQuote: scoped ? [] : volumeByQuote,
       ordersFilled: filled.length,
       ordersResting: records.filter((record) => record.status === "resting" && !record.softCancelled).length,
       avgImprovementBps:

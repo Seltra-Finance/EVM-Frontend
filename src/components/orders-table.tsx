@@ -1,10 +1,13 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Grid3x3, ListFilter, Loader2, WalletMinimal, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, Grid3x3, ListFilter, Loader2, WalletMinimal, WifiOff, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatUnits } from "viem";
-import { GRID_CANCEL_ALL_WARNING, type GridManifest, type OrderRecord } from "@seltra/sdk";
-import { pairById, defaultTradePath, tokenBySymbol } from "@/config/seltra.config";
+import { useAccount, usePublicClient, useReadContracts, useWriteContract } from "wagmi";
+import { GRID_CANCEL_ALL_WARNING, GridPlanError, parseDecimal, type GridManifest, type OrderRecord } from "@seltra/sdk";
+import { isWavax, pairById, defaultTradePath, seltraConfig, tokenBySymbol, type TokenConfig } from "@/config/seltra.config";
+import { erc20Abi, wavaxAbi } from "@/lib/abi";
+import { formatToken } from "@/lib/format";
 import { CANCEL_ALL, useCancelOrders } from "@/hooks/use-cancel-orders";
 import { useGridManifests } from "@/lib/grid-manifests";
 import { formatCountdown, useNowSeconds } from "@/lib/market-data";
@@ -152,7 +155,7 @@ export function OrdersTable({
           ))}
         </div>
       ) : null}
-      {view === "balances" ? <BalancesEmpty /> : null}
+      {view === "balances" ? <BalancesPanel /> : null}
       {view !== "balances" && isLoading ? <OrdersLoading /> : null}
       {view !== "balances" && !isLoading && visibleOrders.length === 0 ? <OrdersEmpty isConnected={isConnected} /> : null}
       {view !== "balances" && !isLoading && visibleOrders.length > 0 ? <div className={`orders-table ${pro ? "pro" : ""}`}>
@@ -296,6 +299,128 @@ function OrdersEmpty({ isConnected }: { isConnected: boolean }) {
   );
 }
 
-function BalancesEmpty() {
-  return <div className="orders-empty balances-empty"><WalletMinimal size={22} /><div><strong>Wallet balances</strong><span>Connect a wallet to view balances available for new Seltra orders.</span></div><a className="button outline" href={defaultTradePath}><ListFilter size={15} /> Trade</a></div>;
+function BalancesPanel() {
+  const { address, isConnected } = useAccount();
+  const tokens = seltraConfig.tokens;
+  const { data, isLoading, refetch } = useReadContracts({
+    contracts: tokens.map((token) => ({
+      address: token.address,
+      abi: erc20Abi,
+      functionName: "balanceOf" as const,
+      args: address ? [address] : undefined,
+    })),
+    query: { enabled: isConnected && Boolean(address), refetchInterval: 20_000 },
+  });
+
+  if (!isConnected) {
+    return (
+      <div className="orders-empty balances-empty">
+        <WalletMinimal size={22} />
+        <div><strong>Wallet balances</strong><span>Connect a wallet to view balances available for new Seltra orders.</span></div>
+        <a className="button outline" href={defaultTradePath}><ListFilter size={15} /> Trade</a>
+      </div>
+    );
+  }
+
+  if (isLoading || !data) {
+    return (
+      <div className="orders-empty">
+        <Loader2 className="spin" size={22} />
+        <div><strong>Loading balances</strong><span>Reading wallet balances for every configured token.</span></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="balances-list">
+      {tokens.map((token, index) => {
+        const result = data[index];
+        const balance = result?.status === "success" ? (result.result as bigint) : undefined;
+        return (
+          <div className="balances-row" key={token.address}>
+            <span className="balances-row-symbol">{token.symbol}</span>
+            <span className="balances-row-value">
+              <span className="number">{balance === undefined ? "—" : formatToken(balance, token.decimals, 4)}</span>
+              {isWavax(token) ? <UnwrapWavaxAction token={token} balance={balance} onDone={() => void refetch()} /> : null}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Manual, explicit unwrap: Settlement never automatically converts a received
+ * WAVAX fill back to native AVAX, and this frontend never pretends it does.
+ */
+function UnwrapWavaxAction({ token, balance, onDone }: { token: TokenConfig; balance: bigint | undefined; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+
+  async function unwrap() {
+    let value: bigint;
+    try {
+      value = parseDecimal(amount, token.decimals, "Amount");
+    } catch (cause) {
+      setError(cause instanceof GridPlanError ? cause.userMessage : "Enter a valid amount");
+      return;
+    }
+    if (value <= 0n) {
+      setError("Amount must be above zero");
+      return;
+    }
+    if (balance !== undefined && value > balance) {
+      setError(`Amount exceeds your ${token.symbol} balance`);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const hash = await writeContractAsync({ address: token.address, abi: wavaxAbi, functionName: "withdraw", args: [value] });
+      await publicClient?.waitForTransactionReceipt({ hash });
+      setOpen(false);
+      setAmount("");
+      onDone();
+    } catch (cause) {
+      setError(cause instanceof Error ? shortUnwrapReason(cause.message) : "Unwrap failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="unwrap-toggle" type="button" onClick={() => setOpen(true)}>
+        Unwrap <ChevronDown size={11} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="unwrap-panel">
+      <div className="input-row">
+        <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label={`Amount of ${token.symbol} to unwrap`} placeholder="0.00" disabled={busy} />
+        <button type="button" onClick={() => setAmount(balance !== undefined ? formatUnits(balance, token.decimals) : "")} disabled={busy || balance === undefined}>
+          MAX
+        </button>
+      </div>
+      {error ? <p className="form-error field-error" role="alert">{error}</p> : null}
+      <div className="unwrap-panel-actions">
+        <button className="button accent" type="button" onClick={() => void unwrap()} disabled={busy}>
+          {busy ? <Loader2 className="spin" size={13} /> : null} Unwrap to AVAX
+        </button>
+        <button className="button outline" type="button" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function shortUnwrapReason(message: string): string {
+  const firstLine = message.split("\n")[0];
+  return firstLine.length > 140 ? `${firstLine.slice(0, 140)}…` : firstLine;
 }
