@@ -77,9 +77,15 @@ export function OrderForm({ machine: m, midPrice }: { machine: OrderEntryMachine
         </button>
       </div>
       <label className="field">
-        <span className="field-label">Amount <small>{displaySymbol(makerAsset.symbol)}</small></span>
+        <span className="field-label">{m.side === "buy" ? "Spend amount" : "Sell amount"} <small>{displaySymbol(makerAsset.symbol)}</small></span>
         <div className="input-row">
-          <input value={m.amount} onChange={(event) => m.setAmount(event.target.value)} inputMode="decimal" />
+          <input
+            value={m.amount}
+            onChange={(event) => m.setAmount(event.target.value)}
+            inputMode="decimal"
+            aria-label={`${m.side === "buy" ? "Spend" : "Sell"} amount in ${displaySymbol(makerAsset.symbol)}`}
+            placeholder="0.00"
+          />
           <button type="button" onClick={m.setMaxAmount}>
             MAX
           </button>

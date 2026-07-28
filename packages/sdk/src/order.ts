@@ -81,8 +81,10 @@ export function buildAmounts(
   baseDecimals: number,
   quoteDecimals: number,
 ): { makingAmount: bigint; takingAmount: bigint } {
-  const cleanAmount = amount && Number(amount) > 0 ? amount : "0";
-  const cleanPrice = price && Number(price) > 0 ? price : "0";
+  const normalizedAmount = normalizeDecimalInput(amount);
+  const normalizedPrice = normalizeDecimalInput(price);
+  const cleanAmount = normalizedAmount && Number(normalizedAmount) > 0 ? normalizedAmount : "0";
+  const cleanPrice = normalizedPrice && Number(normalizedPrice) > 0 ? normalizedPrice : "0";
   if (side === "sell") {
     return {
       makingAmount: parseUnits(cleanAmount, baseDecimals),
@@ -93,4 +95,66 @@ export function buildAmounts(
     makingAmount: parseUnits((Number(cleanAmount) * Number(cleanPrice)).toFixed(quoteDecimals), quoteDecimals),
     takingAmount: parseUnits(cleanAmount, baseDecimals),
   };
+}
+
+/**
+ * Build an order from the maker-asset spend shown in the order form: base
+ * token for a sell, quote token for a buy. Kept separate from `buildAmounts`
+ * so existing SDK consumers whose `amount` is always base-denominated do not
+ * silently change behavior.
+ */
+export function buildMakerAmounts(
+  side: OrderSide,
+  amount: string,
+  price: string,
+  baseDecimals: number,
+  quoteDecimals: number,
+): { makingAmount: bigint; takingAmount: bigint } {
+  // `amount` is always the maker's spend budget: base token for a sell and
+  // quote token for a buy. This mirrors the order form's token label, balance,
+  // MAX button, and Permit2 approval amount.
+  const amountUnits = parsePositiveUnits(amount, side === "sell" ? baseDecimals : quoteDecimals);
+  const priceUnits = parsePositiveUnits(price, quoteDecimals);
+  if (amountUnits === undefined || priceUnits === undefined) {
+    return { makingAmount: 0n, takingAmount: 0n };
+  }
+
+  const baseUnit = 10n ** BigInt(baseDecimals);
+  if (side === "sell") {
+    return {
+      makingAmount: amountUnits,
+      // Round the minimum quote receipt up so the encoded order never accepts
+      // an effective price below the displayed sell limit.
+      takingAmount: ceilDiv(amountUnits * priceUnits, baseUnit),
+    };
+  }
+  return {
+    makingAmount: amountUnits,
+    // Round the minimum base receipt up so the encoded order never pays an
+    // effective price above the displayed buy limit.
+    takingAmount: ceilDiv(amountUnits * baseUnit, priceUnits),
+  };
+}
+
+/** Accept either decimal separator while rejecting ambiguous mixed input. */
+export function normalizeDecimalInput(value: string): string {
+  const trimmed = value.trim();
+  const commaCount = trimmed.split(",").length - 1;
+  if (!trimmed.includes(".") && commaCount === 1) return trimmed.replace(",", ".");
+  return trimmed;
+}
+
+function parsePositiveUnits(value: string, decimals: number): bigint | undefined {
+  const normalized = normalizeDecimalInput(value);
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return undefined;
+  try {
+    const parsed = parseUnits(normalized.startsWith(".") ? `0${normalized}` : normalized, decimals);
+    return parsed > 0n ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ceilDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - 1n) / denominator;
 }
