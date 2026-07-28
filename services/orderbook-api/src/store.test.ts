@@ -122,3 +122,76 @@ test("PostgreSQL imports and verifies a complete SQLite snapshot", async () => {
   await source.close();
   await target.close();
 });
+
+test("stats() scopes every metric to a pair and never mixes quote tokens", async () => {
+  const dbFile = join(mkdtempSync(join(tmpdir(), "seltra-stats-")), "seltra.db");
+  const store = await SqliteOrderStore.open(dbFile, { chainId: 43_113, quoteHistoryMax: 2 });
+
+  const filledSell: OrderRecord = {
+    ...structuredClone(record),
+    orderHash: `0x${"aa".repeat(32)}`,
+    status: "filled",
+    fill: {
+      path: "dex",
+      txHash: `0x${"bb".repeat(32)}`,
+      blockNumber: 1,
+      timestamp: 1_700_000_100,
+      makerImprovement: "500000",
+      keeperReward: "100000",
+    },
+  };
+  const filledBuy: OrderRecord = {
+    ...structuredClone(record),
+    orderHash: `0x${"cc".repeat(32)}`,
+    side: "buy",
+    status: "filled",
+    order: { ...record.order, makingAmount: "40500000", takingAmount: "1000000000000000000" },
+    fill: {
+      path: "p2p",
+      txHash: `0x${"dd".repeat(32)}`,
+      blockNumber: 2,
+      timestamp: 1_700_000_200,
+      makerImprovement: "1000000000000000",
+      keeperReward: "0",
+    },
+  };
+  const resting: OrderRecord = { ...structuredClone(record), orderHash: `0x${"ee".repeat(32)}`, status: "resting" };
+  // A fill under a pair id the running config no longer resolves (e.g. a
+  // retired pair). It must still count toward ordersFilled, but its volume
+  // must never be attributed to any quote token.
+  const unresolvablePairFill: OrderRecord = {
+    ...structuredClone(record),
+    orderHash: `0x${"ff".repeat(32)}`,
+    pair: "RETIRED-PAIR",
+    status: "filled",
+    fill: { path: "dex", txHash: `0x${"11".repeat(32)}`, blockNumber: 3, timestamp: 1_700_000_300, makerImprovement: "0", keeperReward: "0" },
+  };
+
+  await store.upsert(filledSell);
+  await store.upsert(filledBuy);
+  await store.upsert(resting);
+  await store.upsert(unresolvablePairFill);
+
+  const scoped = store.stats(record.pair);
+  assert.equal(scoped.quoteSymbol, "sUSDC");
+  assert.equal(scoped.totalVolumeQuote, "81"); // 40.5 (sell taking) + 40.5 (buy making) sUSDC
+  assert.equal(scoped.ordersFilled, 2);
+  assert.equal(scoped.ordersResting, 1);
+  assert.deepEqual(scoped.volumeByQuote, []); // scoped calls carry the answer in totalVolumeQuote, not a breakdown
+  assert.equal(scoped.avgImprovementBps !== null, true);
+  assert.equal(scoped.p2pMatchRateBps, 5_000); // 1 of 2 fills was P2P
+
+  const unscoped = store.stats();
+  assert.equal(unscoped.quoteSymbol, "sUSDC"); // only one configured pair, so still unambiguous
+  assert.equal(unscoped.totalVolumeQuote, "81"); // the retired pair's fill contributes nothing
+  assert.equal(unscoped.ordersFilled, 3); // but it is still counted as a fill
+  assert.deepEqual(unscoped.volumeByQuote, [{ quoteSymbol: "sUSDC", amount: "81" }]);
+
+  const unknownPair = store.stats("does-not-exist");
+  assert.equal(unknownPair.ordersFilled, 0);
+  assert.equal(unknownPair.ordersResting, 0);
+  assert.equal(unknownPair.totalVolumeQuote, null);
+  assert.equal(unknownPair.quoteSymbol, null); // pairById can't resolve an id the config doesn't know
+
+  await store.close();
+});

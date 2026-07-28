@@ -16,8 +16,8 @@ const navSource = readFileSync(path.join(root, "src", "docs", "navigation.ts"), 
 const navEntries = [...navSource.matchAll(/page\(\s*"((?:[^"\\]|\\.)*)",\s*"([^"]*)",\s*"([^"]+)",\s*"([^"]+)",?\s*\)/g)].map(
   (m) => ({ title: m[1], slug: m[2], file: m[3], section: m[4] }),
 );
-if (navEntries.length !== 30) {
-  failures.push(`navigation.ts: expected 30 page() entries (29 section pages + home), found ${navEntries.length}`);
+if (navEntries.length !== 31) {
+  failures.push(`navigation.ts: expected 31 page() entries (30 section pages + home), found ${navEntries.length}`);
 }
 
 const routes = new Set(navEntries.map((e) => (e.slug === "" ? "/docs" : `/docs/${e.slug}`)));

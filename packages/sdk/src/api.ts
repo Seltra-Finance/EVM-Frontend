@@ -117,8 +117,10 @@ export class SeltraApi {
     return (await response.json()) as TradePrint[];
   }
 
-  async getStats(): Promise<ProtocolStats> {
-    const response = await fetch(`${this.cfg.restUrl}/stats`);
+  /** Omit `pair` for the all-markets view; pass a canonical pair id to scope every metric to it. */
+  async getStats(pair?: string): Promise<ProtocolStats> {
+    const qs = pair ? `?pair=${encodeURIComponent(pair)}` : "";
+    const response = await fetch(`${this.cfg.restUrl}/stats${qs}`);
     if (!response.ok) throw new Error(`Stats request failed (${response.status})`);
     return (await response.json()) as ProtocolStats;
   }

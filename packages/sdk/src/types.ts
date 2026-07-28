@@ -154,8 +154,17 @@ export interface ExecutableQuote {
   ts: number;
 }
 
+/**
+ * `totalVolumeQuote`/`quoteSymbol` are only present when unambiguous: a
+ * single-pair request, or an all-markets request where every configured pair
+ * happens to share one quote token. Otherwise they are null and
+ * `volumeByQuote` carries the per-quote-token breakdown instead — volumes in
+ * different quote assets are never summed into one number.
+ */
 export interface ProtocolStats {
-  totalVolumeQuote: string;
+  totalVolumeQuote: string | null;
+  quoteSymbol: string | null;
+  volumeByQuote: { quoteSymbol: string; amount: string }[];
   ordersFilled: number;
   ordersResting: number;
   avgImprovementBps: number | null;

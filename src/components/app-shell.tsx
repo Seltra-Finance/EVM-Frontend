@@ -1,15 +1,19 @@
 "use client";
 
-import { Activity, BarChart3, Menu, ShieldCheck, Triangle, X } from "lucide-react";
+import { Activity, BarChart3, Github, Menu, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useBlockNumber, useReadContract } from "wagmi";
 import { seltraConfig, isConfiguredAddress, pairById, defaultTradePath } from "@/config/seltra.config";
 import { seltraSettlementAbi } from "@/lib/abi";
 import { bookDepthQuote, bookMid, useOrderbook, useQuote, useStats, useWsStatus } from "@/lib/market-data";
+import { AvalancheChip } from "@/components/avalanche-chip";
+import { MarketSwitcher } from "@/components/market-switcher";
 import { SeltraMark } from "@/components/seltra-mark";
 import { applyTradeMode, ThemeToggle } from "@/components/theme-controls";
 import { WalletButton, WalletDialogProvider } from "@/components/wallet-button";
+import { XLogo } from "@/components/x-logo";
 
 function compactUsd(value: number): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}m`;
@@ -17,8 +21,21 @@ function compactUsd(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
-export function AppShell({ children, pairId, modeControl }: { children: React.ReactNode; pairId: string; modeControl?: React.ReactNode }) {
+export function AppShell({
+  children,
+  pairId,
+  modeControl,
+  onPairChange,
+}: {
+  children: React.ReactNode;
+  pairId: string;
+  modeControl?: React.ReactNode;
+  /** Stats passes this to change the pair in place; omitted elsewhere means "go trade this pair". */
+  onPairChange?: (pairId: string) => void;
+}) {
   const pair = pairById(pairId);
+  const router = useRouter();
+  const selectPair = onPairChange ?? ((nextPairId: string) => router.push(`/trade/${nextPairId}`));
   const { data: fillsPaused } = useReadContract({
     address: seltraConfig.contracts.settlement,
     abi: seltraSettlementAbi,
@@ -47,7 +64,6 @@ export function AppShell({ children, pairId, modeControl }: { children: React.Re
               {seltraConfig.chainId === 43113 ? <span className="testnet-tag">Testnet</span> : null}
             </Link>
             <nav className="nav-links" aria-label="Application">
-              <Link href="/trade">Markets</Link>
               <Link href={defaultTradePath}>Trade</Link>
               <Link href="/orders">Orders</Link>
               <Link href="/stats">Stats</Link>
@@ -63,14 +79,8 @@ export function AppShell({ children, pairId, modeControl }: { children: React.Re
         </header>
         <div className="market-strip" aria-label="Market summary">
           <div className="market-selector-wrap">
-            <span className="network-chip"><Triangle size={9} fill="currentColor" /> Avalanche</span>
-            <select className="pair-select" value={pair.id} aria-label="Market pair" onChange={(event) => (window.location.href = `/trade/${event.target.value}`)}>
-              {seltraConfig.pairs.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.id}
-                </option>
-              ))}
-            </select>
+            <AvalancheChip />
+            <MarketSwitcher pairs={seltraConfig.pairs} selectedPairId={pair.id} onSelect={selectPair} />
           </div>
           <div className="ticker-strip">
             <TickerItem label="Executable" value={quote ? `$${quote.price.toFixed(pair.pricePrecision)}` : "—"} />
@@ -113,6 +123,14 @@ export function AppShell({ children, pairId, modeControl }: { children: React.Re
           <span className="heartbeat">
             <BarChart3 size={13} /> {blockNumber !== undefined ? `Block ${blockNumber.toString()}` : "Block —"}
           </span>
+          <span className="footer-social">
+            <a href="https://github.com/Seltra-Finance" target="_blank" rel="noreferrer" aria-label="Seltra on GitHub" title="GitHub">
+              <Github size={16} />
+            </a>
+            <a href="https://x.com/seltrafinance" target="_blank" rel="noreferrer" aria-label="Seltra on X" title="X (Twitter)">
+              <XLogo size={14} />
+            </a>
+          </span>
         </footer>
       </div>
     </WalletDialogProvider>
@@ -148,7 +166,6 @@ function MobileNav() {
       </button>
       {open ? (
         <nav className="popover mobile-nav-sheet" aria-label="Application">
-          <Link href="/trade" onClick={() => setOpen(false)}>Markets</Link>
           <Link href={defaultTradePath} onClick={() => setOpen(false)}>Trade</Link>
           <Link href="/orders" onClick={() => setOpen(false)}>Orders</Link>
           <Link href="/stats" onClick={() => setOpen(false)}>Stats</Link>

@@ -3,7 +3,8 @@
 import { AlertTriangle, CheckCircle2, Grid3x3, Loader2, OctagonX, PenLine, ShieldCheck, Wallet } from "lucide-react";
 import type { GridLevel, GridPlan } from "@seltra/sdk";
 import { formatToken } from "@/lib/format";
-import { GRID_EXPIRY_OPTIONS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
+import { ExpiryControl } from "@/components/expiry-control";
+import { GRID_BASE_EXPIRY_PRESETS, GRID_EXPIRY_OPTIONS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
 
 // Finite pre-signed grid: a ladder of ordinary one-shot limit orders. The UI
 // keeps two promises visible at all times — one wallet signature per child,
@@ -34,12 +35,14 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
       </div>
       <div className="grid-field-row">
         <label className="field">
-          <span className="field-label">Lower price <small>{g.quote.symbol}</small></span>
-          <div className="input-row"><input value={g.lowerPrice} onChange={(event) => g.setLowerPrice(event.target.value)} inputMode="decimal" placeholder="Below reference" /></div>
+          <span className="field-label">Lower price</span>
+          <div className="input-row"><input value={g.lowerPrice} onChange={(event) => g.setLowerPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{g.quote.symbol}</span></div>
+          <small className="field-hint">Below reference</small>
         </label>
         <label className="field">
-          <span className="field-label">Upper price <small>{g.quote.symbol}</small></span>
-          <div className="input-row"><input value={g.upperPrice} onChange={(event) => g.setUpperPrice(event.target.value)} inputMode="decimal" placeholder="Above reference" /></div>
+          <span className="field-label">Upper price</span>
+          <div className="input-row"><input value={g.upperPrice} onChange={(event) => g.setUpperPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{g.quote.symbol}</span></div>
+          <small className="field-hint">Above reference</small>
         </label>
       </div>
       <div className="grid-field-row">
@@ -49,11 +52,13 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
         </label>
         <label className="field">
           <span className="field-label">Expiry</span>
-          <select value={g.expirySeconds} onChange={(event) => g.setExpirySeconds(Number(event.target.value))}>
-            {GRID_EXPIRY_OPTIONS.map((option) => (
-              <option key={option.seconds} value={option.seconds}>{option.label}</option>
-            ))}
-          </select>
+          <ExpiryControl
+            seconds={g.expirySeconds}
+            onChange={g.setExpirySeconds}
+            onValidChange={g.setExpiryValid}
+            basePresets={GRID_BASE_EXPIRY_PRESETS}
+            idPrefix="grid-expiry"
+          />
         </label>
       </div>
       <label className="field">
@@ -63,6 +68,7 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
           <button type="button" onClick={g.setMaxBaseBudget} disabled={g.baseBalance === undefined}>MAX</button>
         </div>
         <small className="balance-line">Available <strong className="number">{g.baseBalance === undefined ? "-" : formatToken(g.baseBalance, g.base.decimals, 4)} {g.base.symbol}</strong></small>
+        {g.wavaxLeg === "base" ? <NativeAvaxToggle g={g} /> : null}
       </label>
       <label className="field">
         <span className="field-label">Quote budget <small>{g.quote.symbol}, split across buy levels</small></span>
@@ -71,18 +77,44 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
           <button type="button" onClick={g.setMaxQuoteBudget} disabled={g.quoteBalance === undefined}>MAX</button>
         </div>
         <small className="balance-line">Available <strong className="number">{g.quoteBalance === undefined ? "-" : formatToken(g.quoteBalance, g.quote.decimals, 4)} {g.quote.symbol}</strong></small>
+        {g.wavaxLeg === "quote" ? <NativeAvaxToggle g={g} /> : null}
       </label>
       <p className="grid-note"><Grid3x3 size={14} /> Finite grid: orders do not automatically replenish. Each of the {Number.isInteger(levelsCount) && levelsCount > 0 ? levelsCount : "N"} levels is an independent all-or-nothing limit order requiring its own wallet signature.</p>
       {g.formError ? <p className="form-error"><AlertTriangle size={14} /> {g.formError}</p> : null}
       {g.state.tag === "rejected" ? <p className="form-error"><AlertTriangle size={14} /> {g.state.reason}</p> : null}
       <div className="order-action-footer">
-        <button className="button accent full" type="button" onClick={g.review} disabled={g.busy}>
+        <button
+          className="button accent full"
+          type="button"
+          onClick={g.review}
+          disabled={g.busy || (g.isConnected && !g.expiryValid)}
+          title={g.isConnected && !g.expiryValid ? "Fix the expiry field before previewing" : undefined}
+        >
           {!g.isConnected ? <Wallet size={16} /> : <Grid3x3 size={16} />}
           {!g.isConnected ? "Connect wallet" : g.wrongNetwork ? "Switch to Avalanche" : g.fillsPaused ? "Fills are paused" : "Preview grid"}
         </button>
         <p className="caption">Nothing is signed or sent at preview. You will see the exact ladder and signature count first.</p>
       </div>
     </>
+  );
+}
+
+function NativeAvaxToggle({ g }: { g: GridOrderMachine }) {
+  return (
+    <div className="native-avax-toggle">
+      <label className="toggle-row">
+        <input type="checkbox" checked={g.useNativeAvax} onChange={(event) => g.setUseNativeAvax(event.target.checked)} />
+        <span>Use native AVAX</span>
+      </label>
+      {g.useNativeAvax ? (
+        <p className="caption native-avax-note">
+          {g.nativeBalance !== undefined ? `${formatToken(g.nativeBalance, 18, 4)} AVAX available. ` : ""}
+          AVAX routes through WAVAX — {g.wavaxDeficit > 0n
+            ? `${formatToken(g.wavaxDeficit, 18, 6)} AVAX will be wrapped to WAVAX before the first signature.`
+            : "your existing WAVAX balance already covers this budget, so no wrap is needed."}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -104,11 +136,34 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
         <div><span>Wallet signatures</span><strong className="number">{signaturesRequired} — one per order</strong></div>
       </div>
       <p className="grid-note"><Grid3x3 size={14} /> Finite grid: orders do not automatically replenish. Filled levels stay filled.</p>
+      {g.wavaxLeg === "base" ? (
+        <p className="grid-note">Buy levels receive WAVAX, the wrapped-AVAX ERC-20 — not native AVAX automatically.</p>
+      ) : g.wavaxLeg === "quote" ? (
+        <p className="grid-note">Sell levels receive WAVAX, the wrapped-AVAX ERC-20 — not native AVAX automatically.</p>
+      ) : null}
 
       {state.tag === "reviewing" ? (
         <div className="order-action-footer">
           <button className="button accent full" type="button" onClick={g.beginApprovals}><PenLine size={16} /> Continue — {signaturesRequired} signatures required</button>
           <button className="button outline full" type="button" onClick={g.backToEdit}>Back to settings</button>
+        </div>
+      ) : null}
+
+      {state.tag === "needs-wrap" ? (
+        <>
+          <p className="approval-note"><ShieldCheck size={15} /> {formatToken(g.wavaxDeficit, 18, 6)} AVAX will be wrapped to WAVAX before approvals and signing.</p>
+          <div className="order-action-footer">
+            <button className="button accent full" type="button" onClick={g.wrap}>Wrap AVAX</button>
+            <button className="button outline full" type="button" onClick={g.stop}><OctagonX size={15} /> Stop — nothing submitted</button>
+          </div>
+        </>
+      ) : null}
+
+      {state.tag === "wrapping" ? (
+        <div className="order-action-footer">
+          <button className="button accent full" type="button" disabled>
+            <Loader2 className="spin" size={16} /> Wrapping AVAX…
+          </button>
         </div>
       ) : null}
 
