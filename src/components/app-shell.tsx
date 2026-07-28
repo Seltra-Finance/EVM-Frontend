@@ -9,6 +9,7 @@ import { seltraConfig, isConfiguredAddress, pairById, defaultTradePath } from "@
 import { seltraSettlementAbi } from "@/lib/abi";
 import { bookDepthQuote, bookMid, useOrderbook, useQuote, useStats, useWsStatus } from "@/lib/market-data";
 import { AvalancheChip } from "@/components/avalanche-chip";
+import { FillToasts } from "@/components/fill-toasts";
 import { MarketSwitcher } from "@/components/market-switcher";
 import { SeltraMark } from "@/components/seltra-mark";
 import { applyTradeMode, ThemeToggle } from "@/components/theme-controls";
@@ -132,6 +133,7 @@ export function AppShell({
             </a>
           </span>
         </footer>
+        <FillToasts />
       </div>
     </WalletDialogProvider>
   );
