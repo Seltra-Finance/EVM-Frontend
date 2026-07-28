@@ -4,9 +4,9 @@ import { AlertTriangle, CheckCircle2, Grid3x3, Loader2, OctagonX, PenLine, Shiel
 import type { GridLevel, GridPlan } from "@seltra/sdk";
 import { formatToken } from "@/lib/format";
 import { AvaxSwitch } from "@/components/avax-switch";
-import { ExpiryControl } from "@/components/expiry-control";
+import { ExpiryControl, expiryLabelFor } from "@/components/expiry-control";
 import { displaySymbol } from "@/components/token-icon";
-import { GRID_BASE_EXPIRY_PRESETS, GRID_EXPIRY_OPTIONS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
+import { GRID_BASE_EXPIRY_PRESETS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
 
 // Finite pre-signed grid: a ladder of ordinary one-shot limit orders. The UI
 // keeps two promises visible at all times — one wallet signature per child,
@@ -47,21 +47,22 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
           <small className="field-hint">Above reference</small>
         </label>
       </div>
-      <div className="grid-field-row">
-        <label className="field">
-          <span className="field-label">Levels <small>4–20</small></span>
-          <div className="input-row"><input value={g.levels} onChange={(event) => g.setLevels(event.target.value)} inputMode="numeric" /></div>
-        </label>
-        <div className="field">
-          <span className="field-label">Expiry</span>
-          <ExpiryControl
-            seconds={g.expirySeconds}
-            onChange={g.setExpirySeconds}
-            onValidChange={g.setExpiryValid}
-            basePresets={GRID_BASE_EXPIRY_PRESETS}
-            idPrefix="grid-expiry"
-          />
+      <label className="field">
+        <span className="field-label">Levels <small>4–20, both endpoints included</small></span>
+        <div className="input-row">
+          <input value={g.levels} onChange={(event) => g.setLevels(event.target.value)} inputMode="numeric" />
+          <span>levels</span>
         </div>
+      </label>
+      <div className="field">
+        <span className="field-label">Expiry</span>
+        <ExpiryControl
+          seconds={g.expirySeconds}
+          onChange={g.setExpirySeconds}
+          onValidChange={g.setExpiryValid}
+          basePresets={GRID_BASE_EXPIRY_PRESETS}
+          idPrefix="grid-expiry"
+        />
       </div>
       <label className="field">
         <span className="field-label">Base budget <small>{displaySymbol(g.base.symbol)}, split across sell levels</small></span>
@@ -122,7 +123,7 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
   const buys = plan.levels.filter((level) => level.side === "buy");
   const sells = plan.levels.filter((level) => level.side === "sell");
   const signaturesRequired = plan.levels.length;
-  const expiryLabel = GRID_EXPIRY_OPTIONS.find((option) => option.seconds === plan.config.expirySeconds)?.label ?? `${plan.config.expirySeconds}s`;
+  const expiryLabel = expiryLabelFor(plan.config.expirySeconds);
 
   return (
     <>

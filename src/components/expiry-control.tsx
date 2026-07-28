@@ -28,6 +28,16 @@ export function presetsWithinMax(
   return basePresets.filter((preset) => preset.seconds <= maxSeconds);
 }
 
+/** Compact human label for any expiry, including custom values: "1h", "2d", "2.5d". */
+export function expiryLabelFor(seconds: number): string {
+  if (seconds < SECONDS_PER_DAY) {
+    const hours = seconds / 3_600;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
+  }
+  const days = seconds / SECONDS_PER_DAY;
+  return `${Number.isInteger(days) ? days : days.toFixed(1)}d`;
+}
+
 export function ExpiryControl({
   seconds,
   onChange,
@@ -106,7 +116,7 @@ export function ExpiryControl({
               inputMode="decimal"
               aria-label="Custom expiry in days"
               aria-invalid={customError !== null}
-              placeholder={`Up to ${(maxSeconds / SECONDS_PER_DAY).toFixed(2).replace(/\.?0+$/, "")} days`}
+              placeholder={`Max ${(maxSeconds / SECONDS_PER_DAY).toFixed(2).replace(/\.?0+$/, "")}`}
             />
             <span>days</span>
           </div>

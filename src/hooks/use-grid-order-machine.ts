@@ -41,7 +41,6 @@ import {
   type GridSubmitResult,
 } from "@seltra/sdk";
 import { saveGridManifest } from "@/lib/grid-manifests";
-import { presetsWithinMax } from "@/components/expiry-control";
 import { activeChain } from "@/lib/wallet";
 import { useWalletDialog } from "@/components/wallet-button";
 
@@ -69,12 +68,10 @@ export type GridFlowState =
 // expiry control is dropped here — Custom still reaches any value up to the
 // configured maximum (mainnet launch policy: 7 days).
 export const GRID_BASE_EXPIRY_PRESETS = [
-  { label: "1 day", seconds: 86_400 },
-  { label: "7 days", seconds: 604_800 },
-  { label: "30 days", seconds: 2_592_000 },
+  { label: "1d", seconds: 86_400 },
+  { label: "7d", seconds: 604_800 },
+  { label: "30d", seconds: 2_592_000 },
 ] as const;
-
-export const GRID_EXPIRY_OPTIONS = presetsWithinMax(seltraConfig.maxExpirySeconds, GRID_BASE_EXPIRY_PRESETS);
 
 export interface GridOrderMachine {
   pair: PairConfig;
