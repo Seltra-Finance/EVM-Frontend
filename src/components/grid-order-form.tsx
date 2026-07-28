@@ -3,7 +3,9 @@
 import { AlertTriangle, CheckCircle2, Grid3x3, Loader2, OctagonX, PenLine, ShieldCheck, Wallet } from "lucide-react";
 import type { GridLevel, GridPlan } from "@seltra/sdk";
 import { formatToken } from "@/lib/format";
+import { AvaxSwitch } from "@/components/avax-switch";
 import { ExpiryControl } from "@/components/expiry-control";
+import { displaySymbol } from "@/components/token-icon";
 import { GRID_BASE_EXPIRY_PRESETS, GRID_EXPIRY_OPTIONS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
 
 // Finite pre-signed grid: a ladder of ordinary one-shot limit orders. The UI
@@ -31,17 +33,17 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
     <>
       <div className="grid-reference">
         <span>Reference price</span>
-        <strong className="number">{g.referencePrice ? `${g.referencePrice} ${g.quote.symbol}` : "No live price"}</strong>
+        <strong className="number">{g.referencePrice ? `${g.referencePrice} ${displaySymbol(g.quote.symbol)}` : "No live price"}</strong>
       </div>
       <div className="grid-field-row">
         <label className="field">
           <span className="field-label">Lower price</span>
-          <div className="input-row"><input value={g.lowerPrice} onChange={(event) => g.setLowerPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{g.quote.symbol}</span></div>
+          <div className="input-row"><input value={g.lowerPrice} onChange={(event) => g.setLowerPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{displaySymbol(g.quote.symbol)}</span></div>
           <small className="field-hint">Below reference</small>
         </label>
         <label className="field">
           <span className="field-label">Upper price</span>
-          <div className="input-row"><input value={g.upperPrice} onChange={(event) => g.setUpperPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{g.quote.symbol}</span></div>
+          <div className="input-row"><input value={g.upperPrice} onChange={(event) => g.setUpperPrice(event.target.value)} inputMode="decimal" placeholder="0.00" /><span>{displaySymbol(g.quote.symbol)}</span></div>
           <small className="field-hint">Above reference</small>
         </label>
       </div>
@@ -50,7 +52,7 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
           <span className="field-label">Levels <small>4–20</small></span>
           <div className="input-row"><input value={g.levels} onChange={(event) => g.setLevels(event.target.value)} inputMode="numeric" /></div>
         </label>
-        <label className="field">
+        <div className="field">
           <span className="field-label">Expiry</span>
           <ExpiryControl
             seconds={g.expirySeconds}
@@ -59,26 +61,26 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
             basePresets={GRID_BASE_EXPIRY_PRESETS}
             idPrefix="grid-expiry"
           />
-        </label>
+        </div>
       </div>
       <label className="field">
-        <span className="field-label">Base budget <small>{g.base.symbol}, split across sell levels</small></span>
+        <span className="field-label">Base budget <small>{displaySymbol(g.base.symbol)}, split across sell levels</small></span>
         <div className="input-row">
           <input value={g.baseBudget} onChange={(event) => g.setBaseBudget(event.target.value)} inputMode="decimal" />
           <button type="button" onClick={g.setMaxBaseBudget} disabled={g.baseBalance === undefined}>MAX</button>
         </div>
-        <small className="balance-line">Available <strong className="number">{g.baseBalance === undefined ? "-" : formatToken(g.baseBalance, g.base.decimals, 4)} {g.base.symbol}</strong></small>
-        {g.wavaxLeg === "base" ? <NativeAvaxToggle g={g} /> : null}
+        <small className="balance-line">Available <strong className="number">{g.baseBalance === undefined ? "-" : formatToken(g.baseBalance, g.base.decimals, 4)} {displaySymbol(g.base.symbol)}</strong></small>
       </label>
+      {g.wavaxLeg === "base" ? <NativeAvaxToggle g={g} /> : null}
       <label className="field">
-        <span className="field-label">Quote budget <small>{g.quote.symbol}, split across buy levels</small></span>
+        <span className="field-label">Quote budget <small>{displaySymbol(g.quote.symbol)}, split across buy levels</small></span>
         <div className="input-row">
           <input value={g.quoteBudget} onChange={(event) => g.setQuoteBudget(event.target.value)} inputMode="decimal" />
           <button type="button" onClick={g.setMaxQuoteBudget} disabled={g.quoteBalance === undefined}>MAX</button>
         </div>
-        <small className="balance-line">Available <strong className="number">{g.quoteBalance === undefined ? "-" : formatToken(g.quoteBalance, g.quote.decimals, 4)} {g.quote.symbol}</strong></small>
-        {g.wavaxLeg === "quote" ? <NativeAvaxToggle g={g} /> : null}
+        <small className="balance-line">Available <strong className="number">{g.quoteBalance === undefined ? "-" : formatToken(g.quoteBalance, g.quote.decimals, 4)} {displaySymbol(g.quote.symbol)}</strong></small>
       </label>
+      {g.wavaxLeg === "quote" ? <NativeAvaxToggle g={g} /> : null}
       <p className="grid-note"><Grid3x3 size={14} /> Finite grid: orders do not automatically replenish. Each of the {Number.isInteger(levelsCount) && levelsCount > 0 ? levelsCount : "N"} levels is an independent all-or-nothing limit order requiring its own wallet signature.</p>
       {g.formError ? <p className="form-error"><AlertTriangle size={14} /> {g.formError}</p> : null}
       {g.state.tag === "rejected" ? <p className="form-error"><AlertTriangle size={14} /> {g.state.reason}</p> : null}
@@ -102,10 +104,7 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
 function NativeAvaxToggle({ g }: { g: GridOrderMachine }) {
   return (
     <div className="native-avax-toggle">
-      <label className="toggle-row">
-        <input type="checkbox" checked={g.useNativeAvax} onChange={(event) => g.setUseNativeAvax(event.target.checked)} />
-        <span>Use native AVAX</span>
-      </label>
+      <AvaxSwitch checked={g.useNativeAvax} onChange={g.setUseNativeAvax} />
       {g.useNativeAvax ? (
         <p className="caption native-avax-note">
           {g.nativeBalance !== undefined ? `${formatToken(g.nativeBalance, 18, 4)} AVAX available. ` : ""}
@@ -127,11 +126,11 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
 
   return (
     <>
-      <GridLadder plan={plan} baseSymbol={g.base.symbol} quoteSymbol={g.quote.symbol} baseDecimals={g.base.decimals} quoteDecimals={g.quote.decimals} />
+      <GridLadder plan={plan} baseSymbol={displaySymbol(g.base.symbol)} quoteSymbol={displaySymbol(g.quote.symbol)} baseDecimals={g.base.decimals} quoteDecimals={g.quote.decimals} />
       <div className="summary-box">
         <div><span>Ladder</span><strong className="number">{buys.length} buys · {sells.length} sells{plan.neutralPrice ? " · 1 neutral" : ""}</strong></div>
-        <div><span>Quote budget (buys)</span><strong className="number">{formatToken(plan.requiredQuote, g.quote.decimals, 4)} {g.quote.symbol}</strong></div>
-        <div><span>Base budget (sells)</span><strong className="number">{formatToken(plan.requiredBase, g.base.decimals, 4)} {g.base.symbol}</strong></div>
+        <div><span>Quote budget (buys)</span><strong className="number">{formatToken(plan.requiredQuote, g.quote.decimals, 4)} {displaySymbol(g.quote.symbol)}</strong></div>
+        <div><span>Base budget (sells)</span><strong className="number">{formatToken(plan.requiredBase, g.base.decimals, 4)} {displaySymbol(g.base.symbol)}</strong></div>
         <div><span>Expiry</span><strong className="number">{expiryLabel}</strong></div>
         <div><span>Wallet signatures</span><strong className="number">{signaturesRequired} — one per order</strong></div>
       </div>
@@ -169,9 +168,9 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
 
       {state.tag === "needs-base-approval" || state.tag === "needs-quote-approval" ? (
         <>
-          <p className="approval-note"><ShieldCheck size={15} /> One-time Permit2 approval for {state.tag === "needs-base-approval" ? g.base.symbol : g.quote.symbol}. Seltra never receives a standing approval.</p>
+          <p className="approval-note"><ShieldCheck size={15} /> One-time Permit2 approval for {state.tag === "needs-base-approval" ? displaySymbol(g.base.symbol) : displaySymbol(g.quote.symbol)}. Seltra never receives a standing approval.</p>
           <div className="order-action-footer">
-            <button className="button accent full" type="button" onClick={g.approve}>Approve {state.tag === "needs-base-approval" ? g.base.symbol : g.quote.symbol}</button>
+            <button className="button accent full" type="button" onClick={g.approve}>Approve {state.tag === "needs-base-approval" ? displaySymbol(g.base.symbol) : displaySymbol(g.quote.symbol)}</button>
             <button className="button outline full" type="button" onClick={g.stop}><OctagonX size={15} /> Stop — nothing submitted</button>
           </div>
         </>
@@ -180,7 +179,7 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
       {state.tag === "approving-base" || state.tag === "approving-quote" ? (
         <div className="order-action-footer">
           <button className="button accent full" type="button" disabled>
-            <Loader2 className="spin" size={16} /> Approving {state.tag === "approving-base" ? g.base.symbol : g.quote.symbol}…
+            <Loader2 className="spin" size={16} /> Approving {state.tag === "approving-base" ? displaySymbol(g.base.symbol) : displaySymbol(g.quote.symbol)}…
           </button>
         </div>
       ) : null}

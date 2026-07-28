@@ -16,7 +16,7 @@ with real funds.
 |------|------------|
 | `app/`, `src/` | Next.js 14 frontend (wagmi v2 + viem, Reown AppKit, lightweight-charts) |
 | `packages/sdk` | `@seltra/sdk` — order building/hashing, Permit2 typed-data assembly, wire codecs, order validation, REST + reconnecting WS client |
-| `services/orderbook-api` | Off-chain orderbook + on-chain indexer: order intake/validation, book/candles/trades/quotes endpoints, WS stream (sequenced book diffs), settlement-event ingestion with idempotent replay (SQLite) |
+| `services/orderbook-api` | **Deprecated** legacy Fuji demo backend — the active mainnet orderbook API lives in `Seltra-Finance/Limit-Order` under `services/` (see `services/orderbook-api/README.md`) |
 | `deploy/` | Caddyfile, systemd units, production env templates |
 
 ## Development

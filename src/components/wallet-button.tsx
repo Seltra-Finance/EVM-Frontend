@@ -1,10 +1,10 @@
 "use client";
 
-import { useAppKit } from "@reown/appkit/react";
 import { ChevronDown, Copy, ExternalLink, LogOut, Wallet, X } from "lucide-react";
 import { createContext, useContext, useMemo, useState } from "react";
 import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { seltraConfig } from "@/config/seltra.config";
+import { openAppKit } from "@/lib/appkit";
 import { compactAddress } from "@/lib/format";
 import { activeChain, appKitEnabled } from "@/lib/wallet";
 
@@ -20,10 +20,12 @@ export function WalletDialogProvider({ children }: { children: React.ReactNode }
   return <LegacyDialogProvider>{children}</LegacyDialogProvider>;
 }
 
-/** Reown AppKit owns the connect modal (wallet discovery, deep links, WalletConnect). */
+/**
+ * Reown AppKit owns the connect modal (wallet discovery, deep links,
+ * WalletConnect). The modal bundle loads on first open, not with the page.
+ */
 function AppKitDialogProvider({ children }: { children: React.ReactNode }) {
-  const { open } = useAppKit();
-  return <WalletDialogContext.Provider value={() => void open({ view: "Connect" })}>{children}</WalletDialogContext.Provider>;
+  return <WalletDialogContext.Provider value={() => void openAppKit()}>{children}</WalletDialogContext.Provider>;
 }
 
 /** Hand-built connector list; used only until a Reown project id is configured. */

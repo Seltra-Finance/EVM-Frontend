@@ -9,6 +9,7 @@ import { OrdersTable } from "@/components/orders-table";
 import { PriceChart } from "@/components/price-chart";
 import { SimpleTrade } from "@/components/simple-trade";
 import { applyTradeMode, ModeToggle, type TradeMode } from "@/components/theme-controls";
+import { displaySymbol } from "@/components/token-icon";
 import { pairById } from "@/config/seltra.config";
 import { useOrderEntryMachine } from "@/hooks/use-order-entry-machine";
 import { bookMid, useMyOrders, useOrderbook, useQuote } from "@/lib/market-data";
@@ -25,6 +26,17 @@ export function TradingTerminal({ pairId, initialMode }: { pairId: string; initi
   useEffect(() => {
     applyTradeMode(mode);
   }, [mode]);
+
+  // Live price in the tab title, like any exchange: glanceable without focus.
+  useEffect(() => {
+    const price = quoteQuery.data?.price;
+    const pairLabel = `${displaySymbol(pair.base)}/${displaySymbol(pair.quote)}`;
+    document.title =
+      price !== undefined ? `${price.toFixed(pair.pricePrecision)} · ${pairLabel} — Seltra` : `${pairLabel} — Seltra`;
+    return () => {
+      document.title = "Seltra";
+    };
+  }, [quoteQuery.data?.price, pair]);
 
   // Quick-set anchor: the executable router quote when a venue has liquidity, else book mid.
   const midPrice = quoteQuery.data?.price ?? bookMid(bookQuery.data);

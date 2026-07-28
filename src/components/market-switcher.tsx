@@ -3,6 +3,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { PairConfig } from "@/config/seltra.config";
+import { displaySymbol, TokenIcon } from "@/components/token-icon";
 
 // One accessible pair picker used everywhere a market can be changed: a
 // popover on desktop, a bottom sheet on mobile (CSS-driven, no JS breakpoint
@@ -103,9 +104,11 @@ export function MarketSwitcher({
         }}
       >
         <span className="market-switcher-symbols">
-          <strong>{selected.base}</strong>
+          <TokenIcon symbol={selected.base} size={16} />
+          <strong>{displaySymbol(selected.base)}</strong>
           <span className="market-switcher-sep">/</span>
-          <span>{selected.quote}</span>
+          <TokenIcon symbol={selected.quote} size={16} />
+          <span>{displaySymbol(selected.quote)}</span>
         </span>
         <ChevronDown size={14} className="dropdown-chevron" aria-hidden />
       </button>
@@ -140,9 +143,11 @@ export function MarketSwitcher({
                   >
                     <span className="market-switcher-option-main">
                       <span className="market-switcher-option-symbols">
-                        <strong>{pair.base}</strong>
+                        <TokenIcon symbol={pair.base} size={18} />
+                        <strong>{displaySymbol(pair.base)}</strong>
                         <span className="market-switcher-sep">/</span>
-                        <span>{pair.quote}</span>
+                        <TokenIcon symbol={pair.quote} size={18} />
+                        <span>{displaySymbol(pair.quote)}</span>
                       </span>
                       <span className="market-switcher-option-desc">Spot pair · {pair.pricePrecision}dp price</span>
                     </span>

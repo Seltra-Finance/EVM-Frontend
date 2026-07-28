@@ -1,7 +1,7 @@
 import { formatUnits } from "viem";
 import type { Candle, OrderRecord, PairConfig, TradePrint } from "@seltra/sdk";
 
-export const ALLOWED_INTERVALS = new Set([60, 300, 900, 3600, 14_400, 86_400]);
+export const ALLOWED_INTERVALS = new Set([60, 300, 900, 3600, 14_400, 86_400, 604_800, 2_592_000]);
 
 /**
  * Effective fill price in quote-per-base, improvement included: what actually

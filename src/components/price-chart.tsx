@@ -12,9 +12,10 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
-import { Camera, CandlestickChart, Maximize2 } from "lucide-react";
+import { CandlestickChart } from "lucide-react";
 import { pairById } from "@/config/seltra.config";
 import { useCandles, useQuote, useQuoteHistory, useVenueQuoteHistory } from "@/lib/market-data";
+import { displaySymbol, TokenIcon } from "@/components/token-icon";
 
 const INTERVALS: { label: string; seconds: number }[] = [
   { label: "1m", seconds: 60 },
@@ -23,6 +24,8 @@ const INTERVALS: { label: string; seconds: number }[] = [
   { label: "1h", seconds: 3600 },
   { label: "4h", seconds: 14_400 },
   { label: "1D", seconds: 86_400 },
+  { label: "1W", seconds: 604_800 },
+  { label: "1M", seconds: 2_592_000 },
 ];
 
 const VENUE_COLORS: Record<string, string> = {
@@ -33,6 +36,32 @@ const VENUE_COLORS: Record<string, string> = {
 
 function venueColor(name: string, index: number): string {
   return VENUE_COLORS[name.toLowerCase()] ?? ["#38bdf8", "#fb7185", "#a3e635"][index % 3];
+}
+
+/** How far back to look for quote-history samples per selected timeframe. */
+const LOOKBACK_MS: Record<number, number> = {
+  60: 2 * 3_600_000, // 1m -> 2h
+  300: 8 * 3_600_000, // 5m -> 8h
+  900: 24 * 3_600_000, // 15m -> 1d
+  3_600: 4 * 86_400_000, // 1h -> 4d
+  14_400: 14 * 86_400_000, // 4h -> 14d
+  86_400: 90 * 86_400_000, // 1D -> 90d
+  604_800: 365 * 86_400_000, // 1W -> 1y
+  2_592_000: 3 * 365 * 86_400_000, // 1M -> 3y
+};
+
+/**
+ * Without real candles, the venue-history lines are the entire visible
+ * chart — but the query never varied with the selected timeframe, so every
+ * button showed the exact same (server-default 24h) raw sample window at
+ * native polling resolution. Rounded to a 5-minute bucket so the query key
+ * stays stable between polls instead of drifting on every render.
+ */
+function fromMsForInterval(intervalSeconds: number): number {
+  const lookback = LOOKBACK_MS[intervalSeconds] ?? LOOKBACK_MS[3_600];
+  const roundTo = 5 * 60_000;
+  const anchor = Math.floor(Date.now() / roundTo) * roundTo;
+  return anchor - lookback;
 }
 
 export function PriceChart({ pairId }: { pairId: string }) {
@@ -49,8 +78,9 @@ export function PriceChart({ pairId }: { pairId: string }) {
   const [intervalSeconds, setIntervalSeconds] = useState(3600);
   const { data: candles, isLoading } = useCandles(pair.id, intervalSeconds);
   const { data: quote } = useQuote(pair.id);
-  const { data: quoteHistory } = useQuoteHistory(pair.id);
-  const { data: venueQuoteHistory } = useVenueQuoteHistory(pair.id);
+  const fromMs = fromMsForInterval(intervalSeconds);
+  const { data: quoteHistory } = useQuoteHistory(pair.id, fromMs);
+  const { data: venueQuoteHistory } = useVenueQuoteHistory(pair.id, fromMs);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -142,6 +172,28 @@ export function PriceChart({ pairId }: { pairId: string }) {
     };
   }, []);
 
+  // Tick labels reflect the selected timeframe, not just how much history
+  // happens to exist yet: hour-and-below buckets show a clock time, day and
+  // above show a date. Without this, lightweight-charts' own auto-formatting
+  // shows clock-time ticks any time the visible span is short — which, for a
+  // young pair with only a couple of hours of real history, it always is,
+  // even with 1D/1W/1M selected.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const showDate = intervalSeconds >= 86_400;
+    chart.applyOptions({
+      timeScale: {
+        tickMarkFormatter: (time: UTCTimestamp) => {
+          const date = new Date(time * 1000);
+          return showDate
+            ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+            : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        },
+      },
+    });
+  }, [intervalSeconds, isReady]);
+
   // Data feed: real fill-backed candles only; an empty book stays empty.
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -166,15 +218,6 @@ export function PriceChart({ pairId }: { pairId: string }) {
         color: candle.close >= candle.open ? buyMuted : sellMuted,
       })),
     );
-    const timeScale = chartRef.current?.timeScale();
-    if (candles.length >= 8) {
-      timeScale?.fitContent();
-    } else if (candles.length > 0) {
-      // fitContent with a handful of candles stretches each bar across the pane;
-      // pin a normal bar width and keep the bars near the right edge instead.
-      timeScale?.applyOptions({ barSpacing: 12 });
-      timeScale?.setVisibleLogicalRange({ from: candles.length - 30, to: candles.length + 4 });
-    }
   }, [candles]);
 
   // Keep the legacy best-price history as a rolling-deployment fallback. Once
@@ -230,6 +273,16 @@ export function PriceChart({ pairId }: { pairId: string }) {
     }
   }, [venueQuoteHistory]);
 
+  // Re-fit the shared time scale whenever either data source changes shape —
+  // candles and the venue-history lines are independent series with very
+  // different point counts, so a manual logical-range guess keyed to only
+  // one of them (the previous approach) could go out of range for the
+  // other and render a corrupted, squished chart. fitContent() always fits
+  // whatever is actually on screen, for either or both series.
+  useEffect(() => {
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, venueQuoteHistory, intervalSeconds]);
+
   // Current executable prices from every available venue.
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -264,15 +317,6 @@ export function PriceChart({ pairId }: { pairId: string }) {
     }
   }, [quote]);
 
-  function downloadSnapshot() {
-    const canvas = chartRef.current?.takeScreenshot();
-    if (!canvas) return;
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `seltra-${pair.id.toLowerCase()}.png`;
-    link.click();
-  }
-
   const last = candles?.[candles.length - 1];
   const first = candles?.[0];
   const rangeChange = last && first && first.open > 0 ? ((last.close - first.open) / first.open) * 100 : undefined;
@@ -283,9 +327,11 @@ export function PriceChart({ pairId }: { pairId: string }) {
       <div className="chart-toolbar">
         <div>
           <p className="eyebrow">Market</p>
-          <h2>{pair.base} / {pair.quote}</h2>
+          <h2 className="inline-token-value">
+            <TokenIcon symbol={pair.base} size={20} /> {displaySymbol(pair.base)} / <TokenIcon symbol={pair.quote} size={20} /> {displaySymbol(pair.quote)}
+          </h2>
           <div className="chart-legend">
-            <span><i className="legend-candle" /> {pair.base} / {pair.quote}</span>
+            <span><i className="legend-candle" /> {displaySymbol(pair.base)} / {displaySymbol(pair.quote)}</span>
             {last ? (
               <span className="number">
                 O {last.open.toFixed(pair.pricePrecision)}&nbsp;&nbsp;H {last.high.toFixed(pair.pricePrecision)}&nbsp;&nbsp;L {last.low.toFixed(pair.pricePrecision)}&nbsp;&nbsp;C {last.close.toFixed(pair.pricePrecision)}
@@ -317,8 +363,6 @@ export function PriceChart({ pairId }: { pairId: string }) {
               </button>
             ))}
           </div>
-          <button className="toolbar-icon" type="button" title="Fullscreen" aria-label="Fullscreen chart" onClick={() => ref.current?.parentElement?.requestFullscreen?.()}><Maximize2 size={14} /></button>
-          <button className="toolbar-icon" type="button" title="Download chart" aria-label="Download chart" onClick={downloadSnapshot}><Camera size={14} /></button>
         </div>
       </div>
       <div className={`chart-wrap ${isReady ? "ready" : ""}`}>

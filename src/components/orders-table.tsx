@@ -12,6 +12,7 @@ import { CANCEL_ALL, useCancelOrders } from "@/hooks/use-cancel-orders";
 import { useGridManifests } from "@/lib/grid-manifests";
 import { formatCountdown, useNowSeconds } from "@/lib/market-data";
 import { NumberText } from "@/components/number-text";
+import { displaySymbol, TokenIcon } from "@/components/token-icon";
 
 const OPEN_STATUSES = new Set(["resting", "unfillable"]);
 
@@ -226,7 +227,7 @@ function OrderRow({
       <span data-label="Limit"><NumberText value={Number(order.price)} precision={pair.pricePrecision} suffix={` ${pair.quote}`} /></span>
       <span data-label="Filled at" className="fill-cell">
         {order.fill ? <NumberText value={Number(order.price)} precision={pair.pricePrecision} suffix={` ${pair.quote}`} /> : "-"}
-        {improvement ? <NumberText value={improvement.amount} precision={4} suffix={` ${improvement.symbol}`} signed tone="buy" /> : null}
+        {improvement ? <NumberText value={improvement.amount} precision={4} suffix={` ${displaySymbol(improvement.symbol)}`} signed tone="buy" /> : null}
       </span>
       <span data-label="Expires" className={`expiry-countdown ${countdown.warn ? "warn" : ""}`}>{countdown.label}</span>
       <span
@@ -338,7 +339,7 @@ function BalancesPanel() {
         const balance = result?.status === "success" ? (result.result as bigint) : undefined;
         return (
           <div className="balances-row" key={token.address}>
-            <span className="balances-row-symbol">{token.symbol}</span>
+            <span className="balances-row-symbol"><TokenIcon symbol={token.symbol} size={20} /> {displaySymbol(token.symbol)}</span>
             <span className="balances-row-value">
               <span className="number">{balance === undefined ? "—" : formatToken(balance, token.decimals, 4)}</span>
               {isWavax(token) ? <UnwrapWavaxAction token={token} balance={balance} onDone={() => void refetch()} /> : null}
@@ -375,7 +376,7 @@ function UnwrapWavaxAction({ token, balance, onDone }: { token: TokenConfig; bal
       return;
     }
     if (balance !== undefined && value > balance) {
-      setError(`Amount exceeds your ${token.symbol} balance`);
+      setError(`Amount exceeds your ${displaySymbol(token.symbol)} balance`);
       return;
     }
     setBusy(true);
@@ -404,7 +405,7 @@ function UnwrapWavaxAction({ token, balance, onDone }: { token: TokenConfig; bal
   return (
     <div className="unwrap-panel">
       <div className="input-row">
-        <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label={`Amount of ${token.symbol} to unwrap`} placeholder="0.00" disabled={busy} />
+        <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label={`Amount of ${displaySymbol(token.symbol)} to unwrap`} placeholder="0.00" disabled={busy} />
         <button type="button" onClick={() => setAmount(balance !== undefined ? formatUnits(balance, token.decimals) : "")} disabled={busy || balance === undefined}>
           MAX
         </button>
