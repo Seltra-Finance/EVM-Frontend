@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import type { BookSnapshot, Candle, ConnectionStatus, ExecutableQuote, OrderRecord, ProtocolStats, QuotePoint, TradePrint } from "@seltra/sdk";
+import type { BookSnapshot, Candle, ConnectionStatus, ExecutableQuote, OrderRecord, ProtocolStats, QuotePoint, TradePrint, VenueQuotePoint } from "@seltra/sdk";
 import { seltraApi } from "@/lib/api";
 
 export function useWsStatus(): ConnectionStatus {
@@ -99,6 +99,15 @@ export function useQuoteHistory(pairId: string) {
   return useQuery<QuotePoint[]>({
     queryKey: ["seltra", "quote-history", pairId],
     queryFn: () => seltraApi.getQuoteHistory(pairId),
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+}
+
+export function useVenueQuoteHistory(pairId: string) {
+  return useQuery<VenueQuotePoint[]>({
+    queryKey: ["seltra", "venue-quote-history", pairId],
+    queryFn: () => seltraApi.getVenueQuoteHistory(pairId),
     refetchInterval: 30_000,
     retry: 1,
   });

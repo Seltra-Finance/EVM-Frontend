@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BarChart3, Menu, ShieldCheck, Triangle, Wifi, WifiOff, X } from "lucide-react";
+import { Activity, BarChart3, Menu, ShieldCheck, Triangle, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useBlockNumber, useReadContract } from "wagmi";
@@ -77,10 +77,17 @@ export function AppShell({ children, pairId, modeControl }: { children: React.Re
             <TickerItem label="Book mid" value={mid !== undefined ? `$${mid.toFixed(pair.pricePrecision)}` : "—"} />
             <TickerItem label="Book depth" value={depth !== undefined ? compactUsd(depth) : "—"} />
             <TickerItem label="Resting orders" value={stats ? String(stats.ordersResting) : "—"} />
-            <TickerItem label="Orders filled" value={stats ? String(stats.ordersFilled) : "—"} />
-            <span className={`chip conn-chip ${apiOffline ? "offline" : live ? "live" : "connecting"}`} title={apiOffline ? "Cannot reach the Seltra orderbook service" : live ? "Live data stream connected" : "Connecting to the live data stream"}>
-              {apiOffline ? <WifiOff size={11} /> : <Wifi size={11} />}
-              {apiOffline ? "Offline" : live ? "Live" : "Connecting"}
+            <span>
+              <small>Orders filled</small>
+              <strong className="number">
+                {stats ? String(stats.ordersFilled) : "—"}
+                <em
+                  className={`connection-status ${apiOffline ? "offline" : live ? "live" : "connecting"}`}
+                  title={apiOffline ? "Cannot reach the Seltra orderbook service" : live ? "Live data stream connected" : "Connecting to the live data stream"}
+                >
+                  {apiOffline ? "Offline" : live ? "Live" : "Connecting"}
+                </em>
+              </strong>
             </span>
           </div>
         </div>
