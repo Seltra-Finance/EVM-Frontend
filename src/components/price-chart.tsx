@@ -327,8 +327,12 @@ export function PriceChart({ pairId }: { pairId: string }) {
       <div className="chart-toolbar">
         <div>
           <p className="eyebrow">Market</p>
-          <h2 className="inline-token-value">
-            <TokenIcon symbol={pair.base} size={20} /> {displaySymbol(pair.base)} / <TokenIcon symbol={pair.quote} size={20} /> {displaySymbol(pair.quote)}
+          {/* Each leg is its own no-wrap flex item so a narrow panel can never
+              break the title between a symbol and its slash. */}
+          <h2 className="inline-token-value chart-pair-title">
+            <span className="inline-token-value"><TokenIcon symbol={pair.base} size={18} /> {displaySymbol(pair.base)}</span>
+            <span className="market-switcher-sep">/</span>
+            <span className="inline-token-value"><TokenIcon symbol={pair.quote} size={18} /> {displaySymbol(pair.quote)}</span>
           </h2>
           <div className="chart-legend">
             <span><i className="legend-candle" /> {displaySymbol(pair.base)} / {displaySymbol(pair.quote)}</span>

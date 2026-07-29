@@ -1168,11 +1168,31 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
+  /* Simple mode caps the panel near 460px, so on any viewport the title and
+     the 8-button timeframe strip can't sit side by side. Let the strip wrap
+     below the title when squeezed instead of crushing the title column. */
+  flex-wrap: wrap;
+}
+
+/* Title column: grow to fill, shrink freely so a narrow panel wraps the
+   controls below rather than breaking the title text. */
+.chart-toolbar > div:first-child {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.chart-toolbar .chart-controls {
+  flex: 0 0 auto;
 }
 
 .chart-toolbar h2 {
   margin: 0;
+}
+
+/* Each leg (icon + symbol) is atomic; the title may only break at the "/". */
+.chart-pair-title {
+  flex-wrap: wrap;
 }
 
 .chart-legend {
@@ -1252,12 +1272,11 @@ button:disabled {
   }
 }
 
+/* The bordered strip look lives on .timeframe-controls; this is only the
+   toolbar's right-hand wrapper and must never clip its children. */
 .chart-controls {
   display: inline-flex;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg-base);
+  max-width: 100%;
 }
 
 .chart-controls button {
@@ -2324,7 +2343,11 @@ button:disabled {
 }
 
 .timeframe-controls {
-  overflow: hidden;
+  display: inline-flex;
+  max-width: 100%;
+  /* Never clip an interval button; scroll within the strip when squeezed. */
+  overflow-x: auto;
+  scrollbar-width: none;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   background: var(--bg-base);
@@ -3420,6 +3443,12 @@ button:disabled {
 
 .simple-details-body .panel {
   padding: 12px;
+  /* .chart-panel/.orderbook-panel carry grid-area names for the Pro
+     terminal's template grid. This grid has no named areas, and unresolved
+     names collapse into the same implicit cell — the book painted on top of
+     the chart. Reset to normal flow: chart above, book/trades beneath. */
+  grid-area: auto;
+  min-width: 0;
 }
 
 .simple-details-body .chart-wrap {
