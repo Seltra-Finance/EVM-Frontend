@@ -3420,6 +3420,12 @@ button:disabled {
 
 .simple-details-body .panel {
   padding: 12px;
+  /* .chart-panel/.orderbook-panel carry grid-area names for the Pro
+     terminal's template grid. This grid has no named areas, and unresolved
+     names collapse into the same implicit cell — the book painted on top of
+     the chart. Reset to normal flow: chart above, book/trades beneath. */
+  grid-area: auto;
+  min-width: 0;
 }
 
 .simple-details-body .chart-wrap {
