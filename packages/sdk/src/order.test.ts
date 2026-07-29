@@ -27,6 +27,16 @@ test("decimal comma and decimal point produce identical order amounts", () => {
   assert.equal(normalizeDecimalInput(" 10,5 "), "10.5");
 });
 
+test("order amount encoding imposes no arbitrary nominal minimum or maximum", () => {
+  const minimalUnit = buildMakerAmounts("buy", "0.000001", "6.41", 18, 6);
+  assert.equal(minimalUnit.makingAmount, 1n);
+  assert.ok(minimalUnit.takingAmount > 0n);
+
+  const highNotional = buildMakerAmounts("buy", "1000000000", "6.41", 18, 6);
+  assert.equal(highNotional.makingAmount, 1_000_000_000_000_000n);
+  assert.ok(highNotional.takingAmount > 0n);
+});
+
 test("ambiguous or malformed decimal input produces no signable amount", () => {
   assert.deepEqual(buildMakerAmounts("buy", "1,234.56", "6.41", 18, 6), {
     makingAmount: 0n,

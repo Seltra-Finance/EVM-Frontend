@@ -8,7 +8,6 @@ import {
   buildGridOrders,
   collectGridSignatures,
   formatScaled,
-  findUndersizedGridLevel,
   parseDecimal,
   planGrid,
   requiredGridApprovals,
@@ -87,16 +86,6 @@ test("aggregate maker amounts equal the configured budgets exactly", () => {
   assert.equal(sumQuote, parseDecimal("99.999999", 6));
   assert.equal(plan.requiredBase, sumBase);
   assert.equal(plan.requiredQuote, sumQuote);
-});
-
-test("a 7 USDC grid clears a 1 USDC per-child minimum and thinner children are identified", () => {
-  const sevenUsdc = planGrid(config({ levels: 6, quoteBudget: "7" }), pair);
-  assert.equal(findUndersizedGridLevel(sevenUsdc, 1_000_000n), null);
-
-  const thin = findUndersizedGridLevel(sevenUsdc, 3_000_000n);
-  assert.ok(thin);
-  assert.equal(thin.level.side, "buy");
-  assert.ok(thin.quoteNotional < 3_000_000n);
 });
 
 test("division remainder goes to the earliest levels of each side", () => {

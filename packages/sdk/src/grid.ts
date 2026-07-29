@@ -63,18 +63,6 @@ export interface GridPlan {
   requiredQuote: bigint;
 }
 
-export function findUndersizedGridLevel(
-  plan: GridPlan,
-  minimumQuoteNotional: bigint,
-): { level: GridLevel; quoteNotional: bigint } | null {
-  if (minimumQuoteNotional <= 0n) return null;
-  for (const level of plan.levels) {
-    const quoteNotional = level.side === "buy" ? level.makingAmount : level.takingAmount;
-    if (quoteNotional < minimumQuoteNotional) return { level, quoteNotional };
-  }
-  return null;
-}
-
 export interface GridBuiltOrder {
   levelIndex: number;
   side: "buy" | "sell";
