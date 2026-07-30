@@ -5,6 +5,7 @@ import { formatEther, formatUnits, type Address, type Hex } from "viem";
 import {
   useAccount,
   useBalance,
+  usePublicClient,
   useReadContract,
   useSignTypedData,
   useSwitchChain,
@@ -175,6 +176,7 @@ export function useOrderEntryMachine(params: {
   const base = tokenBySymbol(pair.base);
   const quote = tokenBySymbol(pair.quote);
   const { address, isConnected, chainId } = useAccount();
+  const publicClient = usePublicClient();
   const [kind, setKind] = useState<OrderKind>("limit");
   const [slippageBps, setSlippageBps] = useState(50);
   const [side, setSide] = useState<OrderSide>(params.initial?.side ?? "sell");
@@ -225,13 +227,6 @@ export function useOrderEntryMachine(params: {
     functionName: "allowance",
     args: address ? [address, seltraConfig.contracts.permit2] : undefined,
     query: { enabled: Boolean(address) },
-  });
-  const { data: epoch } = useReadContract({
-    address: seltraConfig.contracts.settlement,
-    abi: seltraSettlementAbi,
-    functionName: "currentEpoch",
-    args: address ? [address] : undefined,
-    query: { enabled: Boolean(address) && isConfiguredAddress(seltraConfig.contracts.settlement) },
   });
   const { data: fillsPaused } = useReadContract({
     address: seltraConfig.contracts.settlement,
@@ -441,14 +436,27 @@ export function useOrderEntryMachine(params: {
       dispatch({ type: "REJECTED", reason: "Settlement address is not configured" });
       return;
     }
+    if (!publicClient) {
+      dispatch({ type: "REJECTED", reason: "Avalanche RPC is unavailable. Check your connection and try again" });
+      return;
+    }
     try {
+      // Cancellation can increment the maker epoch while this form is open.
+      // Read it directly from chain immediately before building the order
+      // instead of signing with Wagmi's potentially stale cached value.
+      const freshEpoch = await publicClient.readContract({
+        address: seltraConfig.contracts.settlement,
+        abi: seltraSettlementAbi,
+        functionName: "currentEpoch",
+        args: [address],
+      });
       const { order, permit } = buildOrder({
         maker: address as Address,
         makerAsset: makerAsset.address,
         takerAsset: takerAsset.address,
         makingAmount,
         takingAmount,
-        epoch: epoch ?? 0n,
+        epoch: freshEpoch,
         expirySeconds: orderExpirySeconds,
       });
       const typedData = typedDataForSigning({
