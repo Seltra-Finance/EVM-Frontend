@@ -4,7 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import type { BookSnapshot, Candle, ConnectionStatus, ExecutableQuote, OrderRecord, ProtocolStats, QuotePoint, TradePrint, VenueQuotePoint } from "@seltra/sdk";
+import { seltraConfig } from "@/config/seltra.config";
 import { seltraApi } from "@/lib/api";
+import { isUsdStable, isWavaxLike } from "@/lib/usd";
+
+/** The configured WAVAX/stable pair whose executable quote gives WAVAX priced in USD, if any. */
+const usdSourcePairId = seltraConfig.pairs.find(
+  (pair) => isWavaxLike(pair.base) && isUsdStable(pair.quote),
+)?.id;
 
 export function useWsStatus(): ConnectionStatus {
   const [status, setStatus] = useState<ConnectionStatus>("closed");
@@ -111,6 +118,22 @@ export function useVenueQuoteHistory(pairId: string, fromMs?: number) {
     refetchInterval: 30_000,
     retry: 1,
   });
+}
+
+/**
+ * Live USD price of one WAVAX, from the configured WAVAX/stable executable
+ * quote. undefined when there is no such pair or no venue is quoting it — in
+ * which case WAVAX-denominated figures stay in their native token.
+ */
+export function useAvaxUsdPrice(): number | undefined {
+  const { data } = useQuery<ExecutableQuote | null>({
+    queryKey: ["seltra", "quote", usdSourcePairId ?? "none"],
+    queryFn: () => (usdSourcePairId ? seltraApi.getQuote(usdSourcePairId) : Promise.resolve(null)),
+    enabled: Boolean(usdSourcePairId),
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+  return data?.price;
 }
 
 /** Omit `pair` for the all-markets view; pass a canonical pair id to scope every metric to it. */

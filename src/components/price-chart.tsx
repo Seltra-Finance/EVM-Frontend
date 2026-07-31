@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { CandlestickChart } from "lucide-react";
 import { pairById } from "@/config/seltra.config";
 import { useCandles, useQuote, useQuoteHistory, useVenueQuoteHistory } from "@/lib/market-data";
+import { InfoTip } from "@/components/info-tip";
 import { displaySymbol, TokenIcon } from "@/components/token-icon";
 
 const INTERVALS: { label: string; seconds: number }[] = [
@@ -273,15 +274,23 @@ export function PriceChart({ pairId }: { pairId: string }) {
     }
   }, [venueQuoteHistory]);
 
-  // Re-fit the shared time scale whenever either data source changes shape —
-  // candles and the venue-history lines are independent series with very
-  // different point counts, so a manual logical-range guess keyed to only
-  // one of them (the previous approach) could go out of range for the
-  // other and render a corrupted, squished chart. fitContent() always fits
-  // whatever is actually on screen, for either or both series.
+  // Auto-fit the time scale once per interval, not on every 30s poll. The
+  // previous version re-fit on every data change, so any pan/zoom the user
+  // made snapped back the moment new data arrived. A pending flag, reset when
+  // the interval changes, fits once when data for that interval first lands
+  // and then leaves the viewport alone until the user switches timeframe.
+  const pendingFitRef = useRef(true);
   useEffect(() => {
-    chartRef.current?.timeScale().fitContent();
-  }, [candles, venueQuoteHistory, intervalSeconds]);
+    pendingFitRef.current = true;
+  }, [intervalSeconds]);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !pendingFitRef.current) return;
+    const hasData = (candles?.length ?? 0) > 0 || (venueQuoteHistory?.length ?? 0) > 0 || (quoteHistory?.length ?? 0) > 0;
+    if (!hasData) return;
+    pendingFitRef.current = false;
+    chart.timeScale().fitContent();
+  }, [candles, venueQuoteHistory, quoteHistory, intervalSeconds]);
 
   // Current executable prices from every available venue.
   useEffect(() => {
@@ -349,6 +358,15 @@ export function PriceChart({ pairId }: { pairId: string }) {
           </div>
           {quote && quote.venues.length > 0 ? (
             <div className="chart-venue-legend" aria-label="Venues quoting this pair">
+              <span className="venue-legend-label">
+                Sell {quote.referenceBaseAmount ?? "1"} {displaySymbol(pair.base)}
+                <InfoTip>
+                  These are live router quotes to sell {quote.referenceBaseAmount ?? "one"} {displaySymbol(pair.base)} on
+                  each venue — an indicative reference, not your order&apos;s fill price. Your actual fill depends on order
+                  size and side: buys cross at a higher price, and larger orders move the price. An order can rest through
+                  this line and later fill at a different effective price.
+                </InfoTip>
+              </span>
               {quote.venues.map((venue, index) => (
                 <span className={venue.name === quote.venue ? "venue-best" : undefined} key={venue.name}>
                   <i className="legend-venue" style={{ backgroundColor: venueColor(venue.name, index) }} aria-hidden />
