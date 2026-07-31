@@ -9,6 +9,7 @@ import {
   collectGridSignatures,
   formatScaled,
   parseDecimal,
+  estimateGridProfit,
   planGrid,
   requiredGridApprovals,
   submitGridOrders,
@@ -261,4 +262,21 @@ test("parseDecimal/formatScaled round-trip", () => {
   assert.equal(parseDecimal("40,10", 2), 4010n);
   assert.throws(() => parseDecimal("-1", 2), /decimal number/);
   assert.throws(() => parseDecimal("1e5", 2), /decimal number/);
+});
+
+test("estimateGridProfit: per-grid gain is the level step over the price", () => {
+  // lower 30, upper 50, 11 levels -> step 2; reference 40.
+  const e = estimateGridProfit({ lowerPrice: "30", upperPrice: "50", referencePrice: "40", levels: 11 });
+  assert.equal(e.stepQuote, 2);
+  assert.equal(e.stepPct, 5); // 2/40
+  assert.equal(e.profitPctLow, 4); // 2/50, tightest at the top
+  assert.ok(Math.abs(e.profitPctHigh - 6.6667) < 0.001); // 2/30, widest at the bottom
+});
+
+test("estimateGridProfit: guards against a single level and zero prices", () => {
+  const one = estimateGridProfit({ lowerPrice: "30", upperPrice: "50", referencePrice: "40", levels: 1 });
+  assert.equal(one.stepQuote, 0);
+  assert.equal(one.stepPct, 0);
+  const zero = estimateGridProfit({ lowerPrice: "0", upperPrice: "50", referencePrice: "0", levels: 5 });
+  assert.equal(zero.stepPct, 0); // reference 0 -> no divide-by-zero blowup
 });
