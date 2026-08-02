@@ -207,6 +207,37 @@ export function planGrid(config: GridConfig, pair: GridPairMeta): GridPlan {
   return { gridId, config, levels, neutralPrice, requiredBase, requiredQuote };
 }
 
+export interface GridProfitEstimate {
+  /** Quote gap between adjacent levels. */
+  stepQuote: number;
+  /** Representative per-grid gain at the reference price, percent. */
+  stepPct: number;
+  /** Smallest per-grid gain (near the top of the range), percent. */
+  profitPctLow: number;
+  /** Largest per-grid gain (near the bottom of the range), percent. */
+  profitPctHigh: number;
+}
+
+/**
+ * Indicative grid economics for display only — this uses floats and is never
+ * used to build orders (those stay exact bigint from planGrid). "Profit per
+ * grid" is the gain captured when the price crosses one level and returns:
+ * for an arithmetic ladder that is the level spacing divided by the price, so
+ * it ranges from step/upper (near the top) to step/lower (near the bottom).
+ * Gross of execution costs and never guaranteed — a trending market that
+ * leaves the range simply leaves orders resting.
+ */
+export function estimateGridProfit(
+  config: Pick<GridConfig, "lowerPrice" | "upperPrice" | "referencePrice" | "levels">,
+): GridProfitEstimate {
+  const lower = Number(config.lowerPrice);
+  const upper = Number(config.upperPrice);
+  const reference = Number(config.referencePrice);
+  const step = config.levels > 1 ? (upper - lower) / (config.levels - 1) : 0;
+  const pct = (denominator: number) => (denominator > 0 ? (step / denominator) * 100 : 0);
+  return { stepQuote: step, stepPct: pct(reference), profitPctLow: pct(upper), profitPctHigh: pct(lower) };
+}
+
 /** Which Permit2 allowances fall short of the plan's aggregate budgets. */
 export function requiredGridApprovals(
   plan: GridPlan,

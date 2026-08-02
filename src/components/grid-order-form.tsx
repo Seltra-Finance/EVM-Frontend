@@ -1,10 +1,11 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Grid3x3, Loader2, OctagonX, PenLine, ShieldCheck, Wallet } from "lucide-react";
-import type { GridLevel, GridPlan } from "@seltra/sdk";
+import { estimateGridProfit, type GridLevel, type GridPlan } from "@seltra/sdk";
 import { formatToken } from "@/lib/format";
 import { AvaxSwitch } from "@/components/avax-switch";
 import { ExpiryControl, expiryLabelFor } from "@/components/expiry-control";
+import { InfoTip } from "@/components/info-tip";
 import { displaySymbol } from "@/components/token-icon";
 import { GRID_BASE_EXPIRY_PRESETS, useGridOrderMachine, type GridOrderMachine } from "@/hooks/use-grid-order-machine";
 
@@ -83,6 +84,7 @@ function GridConfigForm({ g }: { g: GridOrderMachine }) {
       </label>
       {g.wavaxLeg === "quote" ? <NativeAvaxToggle g={g} /> : null}
       <p className="grid-note"><Grid3x3 size={14} /> Finite grid: orders do not automatically replenish. Each of the {Number.isInteger(levelsCount) && levelsCount > 0 ? levelsCount : "N"} levels is an independent all-or-nothing limit order requiring its own wallet signature.</p>
+      <p className="grid-note">Buys rest below your reference price and sells above it, so the grid trades both directions as price moves through the range. It earns from oscillation, not from a trend — if price leaves your range, the orders on one side simply stay resting.</p>
       {g.formError ? <p className="form-error"><AlertTriangle size={14} /> {g.formError}</p> : null}
       {g.state.tag === "rejected" ? <p className="form-error"><AlertTriangle size={14} /> {g.state.reason}</p> : null}
       <div className="order-action-footer">
@@ -124,12 +126,30 @@ function GridFlow({ g, plan }: { g: GridOrderMachine; plan: GridPlan }) {
   const sells = plan.levels.filter((level) => level.side === "sell");
   const signaturesRequired = plan.levels.length;
   const expiryLabel = expiryLabelFor(plan.config.expirySeconds);
+  const profit = estimateGridProfit(plan.config);
+  const pp = g.pair.pricePrecision;
+  const rangeDiffers = Math.abs(profit.profitPctHigh - profit.profitPctLow) >= 0.01;
 
   return (
     <>
       <GridLadder plan={plan} baseSymbol={displaySymbol(g.base.symbol)} quoteSymbol={displaySymbol(g.quote.symbol)} baseDecimals={g.base.decimals} quoteDecimals={g.quote.decimals} />
       <div className="summary-box">
         <div><span>Ladder</span><strong className="number">{buys.length} buys · {sells.length} sells{plan.neutralPrice ? " · 1 neutral" : ""}</strong></div>
+        <div><span>Grid step</span><strong className="number">{profit.stepQuote.toFixed(pp)} {displaySymbol(g.quote.symbol)} · {profit.stepPct.toFixed(2)}%</strong></div>
+        <div>
+          <span>
+            Est. profit / grid{" "}
+            <InfoTip>
+              Approximate gain captured each time price crosses one grid level and returns, gross of venue/execution
+              costs. It&apos;s a range because levels near the top of your range earn a smaller percentage than those near
+              the bottom. Grids profit from oscillation and are not guaranteed — a trending market can push price out of
+              your range and leave orders resting.
+            </InfoTip>
+          </span>
+          <strong className="number">
+            ~{profit.profitPctLow.toFixed(2)}%{rangeDiffers ? `–${profit.profitPctHigh.toFixed(2)}%` : ""}
+          </strong>
+        </div>
         <div><span>Quote budget (buys)</span><strong className="number">{formatToken(plan.requiredQuote, g.quote.decimals, 4)} {displaySymbol(g.quote.symbol)}</strong></div>
         <div><span>Base budget (sells)</span><strong className="number">{formatToken(plan.requiredBase, g.base.decimals, 4)} {displaySymbol(g.base.symbol)}</strong></div>
         <div><span>Expiry</span><strong className="number">{expiryLabel}</strong></div>

@@ -1247,6 +1247,17 @@ button:disabled {
   white-space: nowrap;
 }
 
+.venue-legend-label {
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.venue-legend-label .info-tip {
+  color: var(--text-3);
+}
+
 .chart-venue-legend .venue-best {
   color: var(--text-1);
 }
@@ -4874,6 +4885,20 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* Native quote-token amounts shown small beneath the headline USD figure. */
+.volume-native {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.volume-native .number {
+  color: var(--text-3);
 }
 
 @media (max-width: 640px) {

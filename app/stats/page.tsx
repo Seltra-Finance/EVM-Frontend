@@ -7,7 +7,8 @@ import { AppShell } from "@/components/app-shell";
 import { defaultPairId, resolveDisplayPairId, seltraConfig } from "@/config/seltra.config";
 import { NumberText } from "@/components/number-text";
 import { displaySymbol, TokenIcon } from "@/components/token-icon";
-import { useStats } from "@/lib/market-data";
+import { useAvaxUsdPrice, useStats } from "@/lib/market-data";
+import { usdVolume, type QuoteVolume } from "@/lib/usd";
 
 export default function StatsPage() {
   return (
@@ -27,7 +28,17 @@ function StatsPageContent() {
   // never error on a stale or hand-typed URL.
   const selectedPairId = requestedPair ? resolveDisplayPairId(requestedPair) : undefined;
   const { data: stats, isLoading, isError } = useStats(selectedPairId);
+  const avaxUsd = useAvaxUsdPrice();
   const pair = seltraConfig.pairs.find((candidate) => candidate.id === selectedPairId);
+
+  // Per-quote-token volume, from the single-pair figure or the all-markets
+  // breakdown, converted to one USD number where every token can be priced.
+  const quoteVolumes: QuoteVolume[] = stats
+    ? stats.quoteSymbol && stats.totalVolumeQuote !== null
+      ? [{ quoteSymbol: stats.quoteSymbol, amount: stats.totalVolumeQuote }]
+      : stats.volumeByQuote
+    : [];
+  const volumeUsd = usdVolume(quoteVolumes, avaxUsd);
 
   function setPair(nextPairId: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -84,16 +95,34 @@ function StatsPageContent() {
           <section className="panel detail-grid">
             <div>
               <span className="label">Total volume{pair ? ` · ${pair.id}` : ""}</span>
-              {stats.quoteSymbol && stats.totalVolumeQuote !== null ? (
-                <NumberText value={Number(stats.totalVolumeQuote)} suffix={` ${displaySymbol(stats.quoteSymbol)}`} />
-              ) : stats.volumeByQuote.length > 0 ? (
+              {volumeUsd.usd !== null ? (
+                <>
+                  <NumberText value={volumeUsd.usd} prefix="$" />
+                  {/* Native breakdown for transparency: the exact quote-token
+                      amounts behind the dollar figure, plus anything we could
+                      not price (e.g. a WAVAX-quoted pair with no live WAVAX/USD
+                      quote), which stays in its own token rather than guessed. */}
+                  <div className="volume-native">
+                    {quoteVolumes
+                      .filter((entry) => !volumeUsd.unpriced.includes(entry))
+                      .map((entry) => (
+                        <span key={entry.quoteSymbol} className="number">
+                          {Number(entry.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })} {displaySymbol(entry.quoteSymbol)}
+                        </span>
+                      ))}
+                    {volumeUsd.unpriced.map((entry) => (
+                      <NumberText key={entry.quoteSymbol} value={Number(entry.amount)} suffix={` ${displaySymbol(entry.quoteSymbol)}`} />
+                    ))}
+                  </div>
+                </>
+              ) : quoteVolumes.length > 0 ? (
                 <div className="volume-by-quote">
-                  {stats.volumeByQuote.map((entry) => (
+                  {quoteVolumes.map((entry) => (
                     <NumberText key={entry.quoteSymbol} value={Number(entry.amount)} suffix={` ${displaySymbol(entry.quoteSymbol)}`} />
                   ))}
                 </div>
               ) : (
-                <strong className="number">—</strong>
+                <NumberText value={0} prefix="$" />
               )}
             </div>
             <div>
